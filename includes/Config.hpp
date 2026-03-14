@@ -1,9 +1,9 @@
-#ifndef CONFIG_HPP
-#define CONFIG_HPP
 
-#include <string> //menejo de peticciones http
-#include <vector> // lista de clientes
-#include <map> // headers Http
+#pragma once
+
+#include <string> // HTTP petition handler
+#include <vector> // Client list
+#include <map> // HTTP headers
 
 class LocationConfig
 {
@@ -45,5 +45,3 @@ class Config
     
         Config();
 };
-
-#endif
