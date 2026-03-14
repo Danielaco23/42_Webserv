@@ -61,3 +61,4 @@ Makefile can't compare with deleted files, and will always mark them as outdated
 - [GNU make (makefile) documentation](https://www.gnu.org/software/make/manual/)
 	- [Relinking and how to avoid it](https://people.cs.pitt.edu/~znati/Courses/CogNet/related/makeintro.html)
 
+- So far, as far as dgomez-l's apportations, AI was **not** used in the development of this project.
