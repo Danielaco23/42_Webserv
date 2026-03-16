@@ -1,47 +1,22 @@
 
 #pragma once
 
-#include <string> // HTTP petition handler
-#include <vector> // Client list
-#include <map> // HTTP headers
-
-class LocationConfig
-{
-    public:
-        std::string path;
-        std::string root;
-        std::vector<std::string> index;
-        bool autoindex;
-        std::vector<std::string> allowed_methods;
-        
-        std::string cgi_extension;
-        std::string cgi_path;
-        std::string upload_path;
-        
-        LocationConfig();
-};
-
-class ServerConfig
-{
-    public:
-        std::string host;
-        int port; //=listen
-
-        std::vector<std::string> server_name;
-        std::string root;
-        std::vector<std::string> index;
-        size_t client_max_body_size;
-        std::map<int, std::string> error_pages;
-        
-        std::vector<LocationConfig> locations;
-        
-        ServerConfig();
-};
+#include <string>	// HTTP petition handler
+#include <vector>	// Client list
+#include <map>		// HTTP headers
 
 class Config
 {
-    public:
-        std::vector<ServerConfig> servers;
-    
-        Config();
+	private:
+		std::string		_file_Path;		// Path of the config file.
+
+		int				_listen_Port;	// Listening port, mandatory.
+		std::string		_host_Ip;		// Host or 127.0.0.1 by default.
+		std::string		_server_Name;
+		int				_error_Code;	// Default error code.
+		std::string		_error_Page;	// Default error page directory.
+
+	public:
+		Config();
+
 };
