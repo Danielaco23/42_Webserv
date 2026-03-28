@@ -1,9 +1,24 @@
 #include "../includes/Server.hpp"
+#include <limits.h>
+#include <libgen.h>
+#include <unistd.h>
 
 Server::Server(int port) : _port(port)
 {
     _server_fd = -1;
     std::memset(&_address, 0, sizeof(_address));
+
+    // compute executable directory and set _www_root to <exe_dir>/www
+    char exe_path[PATH_MAX];
+    ssize_t len = readlink("/proc/self/exe", exe_path, sizeof(exe_path)-1);
+    if (len != -1)
+    {
+        exe_path[len] = '\0';
+        char *dirc = strdup(exe_path);
+        char *d = dirname(dirc);
+        _www_root = std::string(d) + "/www";
+        free(dirc);
+    }
 }
 
 Server::~Server()
@@ -54,8 +69,9 @@ void Server::startListening()
 
 void Server::acceptConnection()
 {
-    int addrlen = sizeof(_address);
-    int client_fd = accept(_server_fd, (struct sockaddr *)&_address, (socklen_t *)&addrlen);
+    struct sockaddr_storage client_addr;
+    socklen_t addrlen = sizeof(client_addr);
+    int client_fd = accept(_server_fd, (struct sockaddr *)&client_addr, &addrlen);
 
     if (client_fd < 0)
     {
@@ -63,7 +79,14 @@ void Server::acceptConnection()
         return;
     }
 
-    std::cout << "New client connected!" << std::endl;
+    // generate a small request id for tracing
+    static unsigned long req_counter = 0;
+    ++req_counter;
+    std::ostringstream reqid_ss;
+    reqid_ss << "req-" << req_counter;
+    std::string request_id = reqid_ss.str();
+
+    std::cout << "New client connected! (" << request_id << ")" << std::endl;
 
     // 🔹 Leer request
     char buffer[1024];
@@ -76,20 +99,46 @@ void Server::acceptConnection()
         return;
     }
 
+    if (bytes_read == 0)
+    {
+        std::cerr << "Client closed connection before sending data (" << request_id << ")" << std::endl;
+        close(client_fd);
+        return;
+    }
+
     buffer[bytes_read] = '\0';
-    std::cout << "Request:\n" << buffer << std::endl;
+    std::cout << "Request (" << request_id << "):\n" << buffer << std::endl;
 
-    // 🔥 RESPUESTA HTTP (lo importante)
-    // std::string response =
-    //     "HTTP/1.1 200 OK\r\n"
-    //     "Content-Type: text/plain\r\n"
-    //     "Content-Length: 5\r\n"
-    //     "\r\n"
-    //     "Hello";
+	std::string req(buffer);
+	std::istringstream reqstream(req);
+	std::string method, path, version;
+	reqstream >> method >> path >> version;
 
-    // send(client_fd, response.c_str(), response.size(), 0);
+	if (method != "GET")
+	{
+		std::cerr << "Unsupported method: " << method << " (" << request_id << ")" << std::endl;
+		send_error_page(client_fd, 405, "Method Not Allowed", "Only GET is supported.", request_id);
+		return;
+	}
 
-	sendWebPage(client_fd);
+    if (path == "/")
+		path = "/index.html";
+
+    // prevent path traversal
+    if (path.find("..") != std::string::npos)
+    {
+        send_error_page(client_fd, 400, "Bad Request", "Invalid path.", request_id);
+        return;
+    }
+
+    // translate URL path to file under the computed www root
+    std::string file_path = _www_root.empty() ? (std::string("www") + path) : (_www_root + path);
+
+    std::cout << "Routing " << path << " -> " << file_path << " (" << request_id << ")" << std::endl;
+
+    // attempt to send file; on failure, send 404 using template
+    send_file(client_fd, file_path, path, request_id);
+    std::cout << "Finished " << request_id << std::endl;
 }
 
 int Server::getServerFd() const

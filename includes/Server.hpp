@@ -15,23 +15,23 @@
 
 class Server
 {
-    private:
-        int                 _server_fd; // fd sockeer
-        int                 _port;
-        struct sockaddr_in  _address; //ip, port, Af_inet
-    
-    public:
-        Server(int port);
-        ~Server();
+	private:
+		int                 _server_fd; // fd socket
+		int                 _port;
+		struct sockaddr_in  _address; //ip, port, Af_inet
+		std::string         _www_root; // absolute path to www directory (computed from exe)
 
-        void initSocket();
-        void startListening();
-        void acceptConnection();
+	public:
+		Server(int port);
+		~Server();
 
-        int getServerFd() const;
+		void initSocket();
+		void startListening();
+		void acceptConnection();
 
-		void sendWebPage(int client_fd);
-
+		int getServerFd() const;
+		void send_file(int client_fd, const std::string &filepath, const std::string &path, const std::string &request_id);
+		void send_error_page(int client_fd, int status, const std::string &title, const std::string &message, const std::string &request_id);
 };
 
 #endif

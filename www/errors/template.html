@@ -5,26 +5,114 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>{{status}} — {{title}}</title>
   <style>
-    :root{--accent:#2b7cff;--bg:#f6f7fb;--muted:#6b7280}
+    :root{
+      --bg:#f3f6fb;
+      --card:#ffffff;
+      --muted:#6b7280;
+      --accent:#2b7cff;
+      --accent-2:#0066ff;
+      --danger:#ef4444;
+    }
+    html,body{height:100%;}
     *{box-sizing:border-box}
-    body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;background:var(--bg);color:#0f1724}
-    .err-card{background:#fff;padding:28px;border-radius:12px;box-shadow:0 10px 30px rgba(10,20,40,0.06);text-align:center;max-width:720px;margin:8vh auto}
-    .err-card h1{font-size:3rem;margin:0}
-    .err-card h2{margin:.6rem 0;color:#111}
-    .err-card p{color:var(--muted);margin:12px 0}
-    .err-card .muted{color:var(--muted);font-size:.85rem}
-    .btn{display:inline-block;margin-top:12px;padding:10px 14px;border-radius:8px;background:var(--accent);color:#fff;text-decoration:none}
-    .err-meta{margin-top:12px;color:var(--muted);font-size:.9rem}
-    @media (max-width:480px){.err-card{margin:6vh 16px;padding:20px}.err-card h1{font-size:2.2rem}}
+    body{
+      margin:0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial;
+      background: linear-gradient(180deg, #f7fbff 0%, var(--bg) 60%);
+      color:#071034;
+      display:grid;
+      place-items:center;
+      padding:32px;
+    }
+
+    .card{
+      width:100%;
+      max-width:900px;
+      background:var(--card);
+      border-radius:18px;
+      padding:36px;
+      box-shadow: 0 12px 40px rgba(8,24,48,0.12);
+      display:flex;
+      gap:28px;
+      align-items:center;
+      transition:transform .18s ease;
+    }
+    .card:focus-within, .card:hover{transform:translateY(-4px)}
+
+    .visual{
+      flex:0 0 160px;
+      height:160px;
+      border-radius:12px;
+      background: linear-gradient(135deg,var(--accent) 0%, var(--accent-2) 100%);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      color:white;
+      box-shadow: inset 0 -6px 18px rgba(0,0,0,0.08);
+    }
+    .visual svg{
+		width:84px;
+		height:84px;
+	}
+
+    /* make external image scale to fit inside the visual box */
+    .visual img{
+      display:block;
+      max-width:80%;
+      max-height:80%;
+      width:auto;
+      height:auto;
+      object-fit:contain;
+      margin:0 auto;
+      background:#fff;
+      padding:8px;
+      border-radius:8px;
+    }
+
+    .content{flex:1;min-width:0}
+    .status{font-size:64px;line-height:1;color:transparent;background-clip:text;-webkit-background-clip:text;background-image:linear-gradient(90deg,#0f1724,#202a4f);font-weight:700;margin:0}
+    .title{font-size:20px;margin:6px 0 12px;color:#101827}
+    .message{color:var(--muted);margin:8px 0 18px}
+
+    .actions{display:flex;gap:12px;align-items:center}
+    .btn{
+      display:inline-flex;align-items:center;gap:10px;padding:10px 16px;border-radius:10px;border:0;background:linear-gradient(90deg,var(--accent),var(--accent-2));color:#fff;text-decoration:none;font-weight:600;box-shadow:0 6px 18px rgba(43,124,255,0.18)
+    }
+    .btn.secondary{background:transparent;color:var(--accent);border:1px solid rgba(43,124,255,0.12)}
+
+    .meta{margin-top:14px;color:var(--muted);font-size:13px}
+
+    @media (max-width:760px){
+      .card{flex-direction:column;align-items:stretch;padding:20px}
+      .visual{width:100%;height:120px;border-radius:12px}
+      .status{font-size:40px}
+    }
+
   </style>
 </head>
 <body>
-  <main class="err-card">
-    <h1>{{status}}</h1>
-    <h2>{{title}}</h2>
-    <p>{{message}}</p>
-    <a href="/" class="btn">Go home</a>
-    <div class="err-meta">Request id: {{request_id}}</div>
-  </main>
+  <article class="card" role="alert">
+    <div class="visual {{visual_class}}" aria-hidden="true">
+      <img src="{{icon}}" alt="{{title}} icon" />
+    </div>
+
+    <div class="content">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+        <h1 class="status">{{status}}</h1>
+        <div style="min-width:160px;text-align:right">
+          <div class="title">{{title}}</div>
+        </div>
+      </div>
+
+      <p class="message">{{message}}</p>
+
+      <div class="actions">
+        <a href="/" class="btn">Go home</a>
+        <a href="javascript:location.reload()" class="btn secondary">Try again</a>
+      </div>
+
+      <div class="meta">Request id: <strong>{{request_id}}</strong></div>
+    </div>
+  </article>
 </body>
 </html>
