@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>{{status}} — {{title}}</title>
+  <style>
+    :root{--accent:#2b7cff;--bg:#f6f7fb;--muted:#6b7280}
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;background:var(--bg);color:#0f1724}
+    .err-card{background:#fff;padding:28px;border-radius:12px;box-shadow:0 10px 30px rgba(10,20,40,0.06);text-align:center;max-width:720px;margin:8vh auto}
+    .err-card h1{font-size:3rem;margin:0}
+    .err-card h2{margin:.6rem 0;color:#111}
+    .err-card p{color:var(--muted);margin:12px 0}
+    .err-card .muted{color:var(--muted);font-size:.85rem}
+    .btn{display:inline-block;margin-top:12px;padding:10px 14px;border-radius:8px;background:var(--accent);color:#fff;text-decoration:none}
+    .err-meta{margin-top:12px;color:var(--muted);font-size:.9rem}
+    @media (max-width:480px){.err-card{margin:6vh 16px;padding:20px}.err-card h1{font-size:2.2rem}}
+  </style>
+</head>
+<body>
+  <main class="err-card">
+    <h1>{{status}}</h1>
+    <h2>{{title}}</h2>
+    <p>{{message}}</p>
+    <a href="/" class="btn">Go home</a>
+    <div class="err-meta">Request id: {{request_id}}</div>
+  </main>
+</body>
+</html>

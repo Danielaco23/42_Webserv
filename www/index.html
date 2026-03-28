@@ -1,76 +1,135 @@
 <!doctype html>
-<html lang="es">
+<html lang="en">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Subir archivos — Demo</title>
+<meta name="theme-color" content="#2b7cff">
+<!-- simple SVG data favicon to decorate the browser tab -->
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%232b7cff'/%3E%3Cpath d='M32 16 L32 40 M22 26 L32 16 L42 26' stroke='%23fff' stroke-width='3' stroke-linecap='round' stroke-linejoin='round' fill='none'/%3E%3C/svg%3E">
+<title>📤 File Uploader</title>
 <style>
   :root{
-    --bg:#f6f7fb; --card:#fff; --accent:#2b7cff; --muted:#666;
+    --bg:#f6f7fb; --card:#ffffff; --accent:#2b7cff; --accent-2:#5a8cff; --muted:#6b7280;
   }
   *{box-sizing:border-box}
-  body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;background:var(--bg);color:#111}
-  .wrap{max-width:900px;margin:32px auto;padding:20px}
-  .card{background:var(--card);border-radius:10px;padding:18px;box-shadow:0 6px 20px rgba(10,20,40,0.06)}
-  h1{margin:0 0 8px;font-size:1.4rem}
-  p.lead{margin:0 0 16px;color:var(--muted)}
+  body{
+    margin:0;
+    font-family:Inter, system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;
+    -webkit-font-smoothing:antialiased;
+    background:var(--bg);
+    color:#0f1724;
+  }
+  .wrap{max-width:760px;margin:32px auto;padding:20px}
+  .card{
+    background:var(--card);
+    border-radius:12px;
+    padding:22px;
+    box-shadow:0 10px 30px rgba(10,20,40,0.06);
+    border:1px solid rgba(16,24,40,0.04);
+  }
+  h1{margin:0 0 10px;font-size:1.5rem}
+  p.lead{margin:0 0 18px;color:var(--muted);line-height:1.4}
 
-  /* layout */
-  .grid{display:grid;grid-template-columns:1fr 320px;gap:16px}
-  @media (max-width:800px){ .grid{grid-template-columns:1fr} }
+  /* layout: single-column upload area (cola integrada debajo del formulario) */
+  .grid{display:block;gap:16px}
+  @media (min-width:900px){ .wrap{max-width:900px} }
 
   /* dropzone / form */
   .drop{
-    border:2px dashed rgba(43,124,255,0.25);
-    padding:24px;border-radius:8px;text-align:center;min-height:160px;display:flex;flex-direction:column;justify-content:center;gap:12px;
-    transition:background .15s, border-color .15s;
+    border:2px dashed rgba(43,124,255,0.20);
+    padding:26px;border-radius:12px;text-align:center;min-height:160px;display:flex;flex-direction:column;justify-content:center;gap:12px;
+    transition:background .18s, border-color .18s, transform .12s ease;
+    background:linear-gradient(180deg, rgba(255,255,255,0.6), rgba(245,248,255,0.6));
   }
-  .drop.drag{background:rgba(43,124,255,0.04);border-color:var(--accent)}
+  .drop::before{ content: '📁'; font-size:36px; display:block; margin:-6px 0 2px; }
+  .drop.drag{background:linear-gradient(180deg, rgba(43,124,255,0.05), rgba(43,124,255,0.02));border-color:var(--accent);transform:translateY(-2px)}
   .muted{color:var(--muted);font-size:.95rem}
   .btn{
-    display:inline-block;padding:10px 14px;border-radius:8px;background:var(--accent);color:#fff;text-decoration:none;border:none;cursor:pointer;
+    display:inline-block;padding:10px 14px;border-radius:10px;background:linear-gradient(180deg,var(--accent),var(--accent-2));color:#fff;text-decoration:none;border:none;cursor:pointer;
+    box-shadow:0 6px 18px rgba(43,124,255,0.14);transition:transform .12s ease, box-shadow .12s ease, opacity .12s ease;
   }
+  .btn:hover{transform:translateY(-2px);box-shadow:0 10px 28px rgba(43,124,255,0.14)}
   input[type="file"]{display:none}
 
-  /* sidebar / uploaded list */
   .meta{padding:12px}
-  .file-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #f0f2f6}
-  .file-name{flex:1;font-size:.95rem}
-  .progress{height:8px;background:#eef2ff;border-radius:6px;overflow:hidden;width:100%;max-width:160px}
-  .progress > i{display:block;height:100%;width:0;background:var(--accent);transition:width .2s linear}
+  .file-row{display:flex;align-items:center;gap:10px;padding:10px;border-radius:8px;background:linear-gradient(180deg, #fff, #fbfcff);margin-bottom:8px;box-shadow:0 1px 0 rgba(10,20,40,0.02)}
+  .file-row:hover{background:#fbfdff}
+  .file-name{flex:1;font-size:.95rem;color:#0f1724}
+  .progress{height:8px;background:#eef2ff;border-radius:6px;overflow:hidden;width:100%;max-width:220px}
+  .progress > i{display:block;height:100%;width:0;background:var(--accent);transition:width .18s linear}
 
   .status{font-size:.85rem;color:var(--muted)}
   .small{font-size:.85rem;color:var(--muted);margin-top:8px}
+
+  /* messages area */
+  #messages{min-height:26px}
+  #messages .status{margin-top:6px}
+
+  @media (max-width:480px){
+    .drop{min-height:140px;padding:18px}
+    .file-row{padding:8px}
+    .progress{max-width:140px}
+  }
+  /* features and footer */
+  .features{display:flex;gap:12px;margin:14px 0 18px}
+  .feature{flex:1;background:linear-gradient(180deg,#fff,#fbfdff);padding:12px;border-radius:10px;border:1px solid rgba(16,24,40,0.03);box-shadow:0 6px 16px rgba(10,20,40,0.03);text-align:left}
+  .feature strong{display:block;font-size:1rem;margin-bottom:6px;color:#0f1724}
+  .kicker{font-weight:600;color:var(--accent);font-size:.95rem;margin-bottom:6px}
+  .footer{max-width:760px;margin:28px auto 40px;padding:12px;color:var(--muted);font-size:.9rem;text-align:center}
+  .footer a{text-decoration:none;transition:color .12s ease,transform .12s ease,opacity .12s ease;color:var(--accent)}
+  .footer a:hover{text-decoration:none;opacity:0.95;transform:translateY(-1px)}
+  .footer a .gh-icon{width:16px;height:16px;vertical-align:middle;margin-right:8px;fill:currentColor;display:inline-block}
+  .hint{margin-top:12px;padding:10px;background:linear-gradient(180deg, rgba(43,124,255,0.03), rgba(255,255,255,0.02));border-radius:8px;border:1px solid rgba(43,124,255,0.04)}
+  @media (max-width:700px){ .features{flex-direction:column} }
 </style>
 </head>
 <body>
   <div class="wrap">
     <div class="card">
-      <h1>Subir archivos</h1>
-      <p class="lead">Arrastra y suelta archivos o usa el botón. Compatible con múltiples ficheros y muestra progreso.</p>
+  <h1>Upload files</h1>
+  <p class="lead">Drag & drop files or use the button. Supports multiple files and shows progress.</p>
+
+  <div class="features" aria-hidden="false">
+    <div class="feature">
+      <div class="kicker">Secure</div>
+      <strong>Encrypted transfer</strong>
+      <div class="small">All uploads use TLS when served over HTTPS.</div>
+    </div>
+    <div class="feature">
+      <div class="kicker">Fast</div>
+      <strong>Streaming-friendly</strong>
+      <div class="small">Sends files sequentially with progress updates for a smooth UI.</div>
+    </div>
+    <div class="feature">
+      <div class="kicker">Simple</div>
+      <strong>Drop, pick, and go</strong>
+      <div class="small">Minimal UI focused on quick uploads and clear feedback.</div>
+    </div>
+  </div>
 
       <div class="grid">
         <div>
           <form id="uploadForm" action="/upload" method="POST" enctype="multipart/form-data" novalidate>
             <label id="dropzone" class="drop" for="fileInput">
-              <strong>Arrastra archivos aquí</strong>
-              <div class="muted">o</div>
-              <button type="button" id="pickBtn" class="btn">Seleccionar archivos</button>
+              <strong>Drag files here</strong>
+              <div class="muted">or</div>
+              <button type="button" id="pickBtn" class="btn">Select files</button>
               <input id="fileInput" name="files" type="file" multiple>
-              <div class="small">Al subir, el servidor debe aceptar POST /upload con multipart/form-data.</div>
+              <div class="small">Server must accept POST /upload with multipart/form-data.</div>
             </label>
 
             <div style="margin-top:12px">
-              <button id="sendBtn" class="btn" type="button">Subir</button>
-              <button id="fallbackSubmit" type="submit" style="margin-left:8px">Enviar (form)</button>
+              <button id="sendBtn" class="btn" type="button">Upload</button>
+              <button id="fallbackSubmit" type="submit" style="margin-left:8px">Submit (form)</button>
             </div>
           </form>
 
           <div id="messages" style="margin-top:12px"></div>
+          <div class="hint">Tip: You can drag multiple files at once. Large files will be rejected if they exceed 50MB.</div>
         </div>
 
         <aside class="card meta" aria-labelledby="uploadListTitle">
-          <h2 id="uploadListTitle" style="margin:0 0 8px;font-size:1rem">Cola de subida</h2>
+          <h2 id="uploadListTitle" style="margin:0 0 8px;font-size:1rem">Upload queue</h2>
           <div id="fileList"></div>
           <div id="overall" class="small"></div>
         </aside>
@@ -78,7 +137,22 @@
     </div>
   </div>
 
-<script>
+    </div>
+  </div>
+
+  <!-- footer -->
+  <div class="footer">
+    <div>© 2026 Demo Upload — built for <strong>42_Webserv</strong></div>
+    <div style="margin-top:8px">
+      <a href="#" style="color:var(--accent);text-decoration:none;margin-right:10px">About</a>
+      <a href="#" style="color:var(--accent);text-decoration:none;margin-right:10px">Docs</a>
+      <a href="https://github.com/42-Webserv/42_Webserv" target="_blank" rel="noopener noreferrer">
+        <img src="/www/icons/github.svg" class="gh-icon" alt="GitHub"> Source
+      </a>
+    </div>
+  </div>
+
+  <script>
 (function(){
   const fileInput = document.getElementById('fileInput');
   const pickBtn = document.getElementById('pickBtn');
@@ -103,7 +177,7 @@
       // attach progress node for updates
       f._ui = {bar: progBar, row};
     });
-    document.getElementById('overall').textContent = files.length ? files.length + ' archivo(s) preparados' : '';
+  document.getElementById('overall').textContent = files.length ? files.length + ' file(s) ready' : '';
   }
 
   function addFiles(list){
@@ -112,7 +186,7 @@
       // simple sanity: max 50 MB per file example
       const MAX = 50 * 1024 * 1024;
       if (f.size > MAX){
-        const p = document.createElement('div'); p.className='status'; p.textContent = f.name + ' demasiado grande (max 50MB)'; messages.appendChild(p);
+        const p = document.createElement('div'); p.className='status'; p.textContent = f.name + ' is too large (max 50MB)'; messages.appendChild(p);
       } else {
         files.push(f);
       }
@@ -132,11 +206,11 @@
   dropzone.addEventListener('drop', (e)=> addFiles(e.dataTransfer.files));
 
   function uploadAll(){
-    if (!files.length) { messages.textContent = 'No hay archivos para subir.'; return; }
+  if (!files.length) { messages.textContent = 'No files to upload.'; return; }
     messages.textContent = '';
     // upload files sequentially to keep it simple
     (async function next(i){
-      if (i >= files.length) { messages.textContent = 'Subidas completadas.'; return; }
+  if (i >= files.length) { messages.textContent = 'Uploads completed.'; return; }
       const f = files[i];
       await uploadFile(f);
       next(i+1);
@@ -160,195 +234,13 @@
       xhr.onreadystatechange = function(){
         if (xhr.readyState === 4){
           const ok = xhr.status >= 200 && xhr.status < 300;
-          const statusNode = document.createElement('div'); statusNode.className='status';
-          statusNode.textContent = file.name + ' → ' + (ok ? 'OK' : ('Error: ' + xhr.status));
+              const statusNode = document.createElement('div'); statusNode.className='status';
+              statusNode.textContent = file.name + ' → ' + (ok ? 'OK' : ('Error: ' + xhr.status));
           messages.appendChild(statusNode);
           resolve();
         }
       };
-      xhr.onerror = function(){ messages.appendChild(Object.assign(document.createElement('div'),{textContent:'Error de red'})); resolve(); };
-      xhr.send(formData);
-    });
-  }
-
-  sendBtn.addEventListener('click', uploadAll);
-
-  // keyboard / accessibility: Enter on dropzone triggers file picker
-  dropzone.addEventListener('keydown', (e)=>{ if (e.key === 'Enter' || e.key === ' ') { fileInput.click(); e.preventDefault(); }});
-})();
-</script>
-</body>
-</html>
-```// filepath: vsls:/www/index.html
-<!doctype html>
-<html lang="es">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Subir archivos — Demo</title>
-<style>
-  :root{
-    --bg:#f6f7fb; --card:#fff; --accent:#2b7cff; --muted:#666;
-  }
-  *{box-sizing:border-box}
-  body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;background:var(--bg);color:#111}
-  .wrap{max-width:900px;margin:32px auto;padding:20px}
-  .card{background:var(--card);border-radius:10px;padding:18px;box-shadow:0 6px 20px rgba(10,20,40,0.06)}
-  h1{margin:0 0 8px;font-size:1.4rem}
-  p.lead{margin:0 0 16px;color:var(--muted)}
-
-  /* layout */
-  .grid{display:grid;grid-template-columns:1fr 320px;gap:16px}
-  @media (max-width:800px){ .grid{grid-template-columns:1fr} }
-
-  /* dropzone / form */
-  .drop{
-    border:2px dashed rgba(43,124,255,0.25);
-    padding:24px;border-radius:8px;text-align:center;min-height:160px;display:flex;flex-direction:column;justify-content:center;gap:12px;
-    transition:background .15s, border-color .15s;
-  }
-  .drop.drag{background:rgba(43,124,255,0.04);border-color:var(--accent)}
-  .muted{color:var(--muted);font-size:.95rem}
-  .btn{
-    display:inline-block;padding:10px 14px;border-radius:8px;background:var(--accent);color:#fff;text-decoration:none;border:none;cursor:pointer;
-  }
-  input[type="file"]{display:none}
-
-  /* sidebar / uploaded list */
-  .meta{padding:12px}
-  .file-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #f0f2f6}
-  .file-name{flex:1;font-size:.95rem}
-  .progress{height:8px;background:#eef2ff;border-radius:6px;overflow:hidden;width:100%;max-width:160px}
-  .progress > i{display:block;height:100%;width:0;background:var(--accent);transition:width .2s linear}
-
-  .status{font-size:.85rem;color:var(--muted)}
-  .small{font-size:.85rem;color:var(--muted);margin-top:8px}
-</style>
-</head>
-<body>
-  <div class="wrap">
-    <div class="card">
-      <h1>Subir archivos</h1>
-      <p class="lead">Arrastra y suelta archivos o usa el botón. Compatible con múltiples ficheros y muestra progreso.</p>
-
-      <div class="grid">
-        <div>
-          <form id="uploadForm" action="/upload" method="POST" enctype="multipart/form-data" novalidate>
-            <label id="dropzone" class="drop" for="fileInput">
-              <strong>Arrastra archivos aquí</strong>
-              <div class="muted">o</div>
-              <button type="button" id="pickBtn" class="btn">Seleccionar archivos</button>
-              <input id="fileInput" name="files" type="file" multiple>
-              <div class="small">Al subir, el servidor debe aceptar POST /upload con multipart/form-data.</div>
-            </label>
-
-            <div style="margin-top:12px">
-              <button id="sendBtn" class="btn" type="button">Subir</button>
-              <button id="fallbackSubmit" type="submit" style="margin-left:8px">Enviar (form)</button>
-            </div>
-          </form>
-
-          <div id="messages" style="margin-top:12px"></div>
-        </div>
-
-        <aside class="card meta" aria-labelledby="uploadListTitle">
-          <h2 id="uploadListTitle" style="margin:0 0 8px;font-size:1rem">Cola de subida</h2>
-          <div id="fileList"></div>
-          <div id="overall" class="small"></div>
-        </aside>
-      </div>
-    </div>
-  </div>
-
-<script>
-(function(){
-  const fileInput = document.getElementById('fileInput');
-  const pickBtn = document.getElementById('pickBtn');
-  const dropzone = document.getElementById('dropzone');
-  const fileList = document.getElementById('fileList');
-  const sendBtn = document.getElementById('sendBtn');
-  const messages = document.getElementById('messages');
-  const form = document.getElementById('uploadForm');
-
-  let files = [];
-
-  function renderList(){
-    fileList.innerHTML = '';
-    files.forEach((f, idx)=>{
-      const row = document.createElement('div'); row.className='file-row';
-      const name = document.createElement('div'); name.className='file-name'; name.textContent = f.name;
-      const size = document.createElement('div'); size.className='status'; size.textContent = Math.round(f.size/1024) + ' KB';
-      const progWrap = document.createElement('div'); progWrap.className='progress';
-      const progBar = document.createElement('i'); progWrap.appendChild(progBar);
-      row.appendChild(name); row.appendChild(size); row.appendChild(progWrap);
-      fileList.appendChild(row);
-      // attach progress node for updates
-      f._ui = {bar: progBar, row};
-    });
-    document.getElementById('overall').textContent = files.length ? files.length + ' archivo(s) preparados' : '';
-  }
-
-  function addFiles(list){
-    const arr = Array.from(list);
-    arr.forEach(f=>{
-      // simple sanity: max 50 MB per file example
-      const MAX = 50 * 1024 * 1024;
-      if (f.size > MAX){
-        const p = document.createElement('div'); p.className='status'; p.textContent = f.name + ' demasiado grande (max 50MB)'; messages.appendChild(p);
-      } else {
-        files.push(f);
-      }
-    });
-    renderList();
-  }
-
-  pickBtn.addEventListener('click', ()=> fileInput.click());
-  fileInput.addEventListener('change', (e)=> addFiles(e.target.files));
-
-  ;['dragenter','dragover'].forEach(ev=>{
-    dropzone.addEventListener(ev, (e)=>{ e.preventDefault(); e.stopPropagation(); dropzone.classList.add('drag'); }, false);
-  });
-  ;['dragleave','drop'].forEach(ev=>{
-    dropzone.addEventListener(ev, (e)=>{ e.preventDefault(); e.stopPropagation(); dropzone.classList.remove('drag'); }, false);
-  });
-  dropzone.addEventListener('drop', (e)=> addFiles(e.dataTransfer.files));
-
-  function uploadAll(){
-    if (!files.length) { messages.textContent = 'No hay archivos para subir.'; return; }
-    messages.textContent = '';
-    // upload files sequentially to keep it simple
-    (async function next(i){
-      if (i >= files.length) { messages.textContent = 'Subidas completadas.'; return; }
-      const f = files[i];
-      await uploadFile(f);
-      next(i+1);
-    })(0);
-  }
-
-  function uploadFile(file){
-    return new Promise((resolve)=>{
-      const xhr = new XMLHttpRequest();
-      const formData = new FormData();
-      // server may expect the field name 'files' or 'file' — adjust if needed
-      formData.append('files', file, file.name);
-
-      xhr.open('POST', form.action || '/upload', true);
-      xhr.upload.addEventListener('progress', (e)=>{
-        if (e.lengthComputable && file._ui && file._ui.bar){
-          const pct = Math.round((e.loaded / e.total) * 100);
-          file._ui.bar.style.width = pct + '%';
-        }
-      });
-      xhr.onreadystatechange = function(){
-        if (xhr.readyState === 4){
-          const ok = xhr.status >= 200 && xhr.status < 300;
-          const statusNode = document.createElement('div'); statusNode.className='status';
-          statusNode.textContent = file.name + ' → ' + (ok ? 'OK' : ('Error: ' + xhr.status));
-          messages.appendChild(statusNode);
-          resolve();
-        }
-      };
-      xhr.onerror = function(){ messages.appendChild(Object.assign(document.createElement('div'),{textContent:'Error de red'})); resolve(); };
+  xhr.onerror = function(){ messages.appendChild(Object.assign(document.createElement('div'),{textContent:'Network error'})); resolve(); };
       xhr.send(formData);
     });
   }

@@ -28,15 +28,16 @@ CXX_NAME		=	webserv
 INCLUDES_DIR	=	includes
 
 INCLUDE_FILES	=	Config.hpp\
-					webserv.hpp\
+					Webserver.hpp\
 
 VPATH			=	objects/:\
 					includes/:\
 					src/:\
-					src/config:\
+					src/config/:\
 
-CXX_SRC			=	main.cpp\
-					Config.cpp\
+CXX_SRC			=	main_server.cpp\
+					Server.cpp \
+					sendWebPage.cpp
 
 CXX_OBJ_DIR		=	objects
 CXX_OBJ			=	$(patsubst %.cpp, $(CXX_OBJ_DIR)/%.o, $(CXX_SRC))
