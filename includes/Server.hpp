@@ -9,6 +9,10 @@
 #include <unistd.h> //close
 #include <arpa/inet.h> //socket, bind , listen, accept
 
+#include <fstream>
+#include <sstream>
+#include <string>
+
 class Server
 {
     private:
@@ -25,6 +29,8 @@ class Server
         void acceptConnection();
 
         int getServerFd() const;
+
+		void sendWebPage(int client_fd);
 
 };
 
