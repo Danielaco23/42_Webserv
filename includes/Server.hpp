@@ -15,6 +15,10 @@
 #include <arpa/inet.h> //socket, bind , listen, accept
 #include "Client.hpp"
 
+#include <fstream>
+#include <sstream>
+#include <string>
+
 class Server
 {
     private:
@@ -37,6 +41,8 @@ class Server
         void handleClientRead(int fd);
         void handleClientWrite(int fd);
         void removeClient(int fd);
+
+		void sendWebPage(int client_fd);
 
 };
 
