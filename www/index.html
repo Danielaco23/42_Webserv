@@ -49,6 +49,15 @@
     box-shadow:0 6px 18px rgba(43,124,255,0.14);transition:transform .12s ease, box-shadow .12s ease, opacity .12s ease;
   }
   .btn:hover{transform:translateY(-2px);box-shadow:0 10px 28px rgba(43,124,255,0.14)}
+  .btn.alt{
+    background:linear-gradient(180deg,#e7a407,#fbb00f);
+    color:#2d3a57;
+    border:1px solid rgba(43,124,255,0.22);
+    box-shadow:0 6px 16px rgba(12,24,48,0.08);
+  }
+  .btn.alt:hover{
+    box-shadow:0 10px 24px rgba(12,24,48,0.12);
+  }
   input[type="file"]{display:none}
 
   .meta{padding:12px}
@@ -118,9 +127,9 @@
               <div class="small">Server must accept POST /upload with multipart/form-data.</div>
             </label>
 
-            <div style="margin-top:12px">
+            <div style="margin-top:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
               <button id="sendBtn" class="btn" type="button">Upload</button>
-              <button id="fallbackSubmit" type="submit" style="margin-left:8px">Submit (form)</button>
+              <button id="fallbackSubmit" class="btn alt" type="submit">Submit All</button>
             </div>
           </form>
 
@@ -171,7 +180,9 @@
       const name = document.createElement('div'); name.className='file-name'; name.textContent = f.name;
       const size = document.createElement('div'); size.className='status'; size.textContent = Math.round(f.size/1024) + ' KB';
       const progWrap = document.createElement('div'); progWrap.className='progress';
-      const progBar = document.createElement('i'); progWrap.appendChild(progBar);
+      const progBar = document.createElement('i');
+      progBar.style.width = '0%';
+      progWrap.appendChild(progBar);
       row.appendChild(name); row.appendChild(size); row.appendChild(progWrap);
       fileList.appendChild(row);
       // attach progress node for updates
@@ -224,6 +235,9 @@
       // server may expect the field name 'files' or 'file' — adjust if needed
       formData.append('files', file, file.name);
 
+      if (file._ui && file._ui.bar)
+        file._ui.bar.style.width = '0%';
+
       xhr.open('POST', form.action || '/upload', true);
       xhr.upload.addEventListener('progress', (e)=>{
         if (e.lengthComputable && file._ui && file._ui.bar){
@@ -233,14 +247,23 @@
       });
       xhr.onreadystatechange = function(){
         if (xhr.readyState === 4){
+          if (file._ui && file._ui.bar)
+            file._ui.bar.style.width = '100%';
+
           const ok = xhr.status >= 200 && xhr.status < 300;
-              const statusNode = document.createElement('div'); statusNode.className='status';
-              statusNode.textContent = file.name + ' → ' + (ok ? 'OK' : ('Error: ' + xhr.status));
+          const statusNode = document.createElement('div');
+          statusNode.className='status';
+          statusNode.textContent = file.name + ' → ' + (ok ? 'OK' : ('Error: ' + xhr.status));
           messages.appendChild(statusNode);
           resolve();
         }
       };
-  xhr.onerror = function(){ messages.appendChild(Object.assign(document.createElement('div'),{textContent:'Network error'})); resolve(); };
+      xhr.onerror = function(){
+        if (file._ui && file._ui.bar)
+          file._ui.bar.style.width = '100%';
+        messages.appendChild(Object.assign(document.createElement('div'),{textContent:'Network error'}));
+        resolve();
+      };
       xhr.send(formData);
     });
   }
