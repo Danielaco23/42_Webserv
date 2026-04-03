@@ -37,7 +37,8 @@ VPATH			=	objects/:\
 
 CXX_SRC			=	main_server.cpp\
 					Server.cpp \
-					sendWebPage.cpp
+					sendWebPage.cpp\
+					Upload.cpp
 
 CXX_OBJ_DIR		=	objects
 CXX_OBJ			=	$(patsubst %.cpp, $(CXX_OBJ_DIR)/%.o, $(CXX_SRC))
