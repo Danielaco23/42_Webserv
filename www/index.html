@@ -141,6 +141,9 @@
           <h2 id="uploadListTitle" style="margin:0 0 8px;font-size:1rem">Upload queue</h2>
           <div id="fileList"></div>
           <div id="overall" class="small"></div>
+
+          <h2 style="margin:16px 0 8px;font-size:1rem">Uploaded files</h2>
+          <div id="uploadedList" class="small">Loading...</div>
         </aside>
       </div>
     </div>
@@ -167,6 +170,7 @@
   const pickBtn = document.getElementById('pickBtn');
   const dropzone = document.getElementById('dropzone');
   const fileList = document.getElementById('fileList');
+  const uploadedList = document.getElementById('uploadedList');
   const sendBtn = document.getElementById('sendBtn');
   const messages = document.getElementById('messages');
   const form = document.getElementById('uploadForm');
@@ -207,6 +211,10 @@
 
   pickBtn.addEventListener('click', ()=> fileInput.click());
   fileInput.addEventListener('change', (e)=> addFiles(e.target.files));
+  form.addEventListener('submit', (e)=>{
+    e.preventDefault();
+    uploadAll();
+  });
 
   ;['dragenter','dragover'].forEach(ev=>{
     dropzone.addEventListener(ev, (e)=>{ e.preventDefault(); e.stopPropagation(); dropzone.classList.add('drag'); }, false);
@@ -221,11 +229,60 @@
     messages.textContent = '';
     // upload files sequentially to keep it simple
     (async function next(i){
-  if (i >= files.length) { messages.textContent = 'Uploads completed.'; return; }
+  if (i >= files.length) {
+        messages.textContent = 'Uploads completed.';
+        loadUploadedFiles();
+        return;
+      }
       const f = files[i];
       await uploadFile(f);
       next(i+1);
     })(0);
+  }
+
+  function renderUploadedFiles(filesData){
+    if (!Array.isArray(filesData) || !filesData.length){
+      uploadedList.textContent = 'No uploaded files yet.';
+      return;
+    }
+
+    const list = document.createElement('ul');
+    list.style.margin = '0';
+    list.style.paddingLeft = '18px';
+
+    filesData.forEach((item)=>{
+      const li = document.createElement('li');
+      const kb = Math.round((item.size || 0) / 1024);
+      li.textContent = item.name + ' (' + kb + ' KB)';
+      list.appendChild(li);
+    });
+
+    uploadedList.innerHTML = '';
+    uploadedList.appendChild(list);
+  }
+
+  function loadUploadedFiles(){
+    const xhr = new XMLHttpRequest();
+    xhr.open('GET', '/uploads', true);
+    xhr.onreadystatechange = function(){
+      if (xhr.readyState !== 4)
+        return;
+
+      if (xhr.status >= 200 && xhr.status < 300){
+        try {
+          const payload = JSON.parse(xhr.responseText || '{}');
+          renderUploadedFiles(payload.files || []);
+        } catch (e) {
+          uploadedList.textContent = 'Could not parse uploaded files list.';
+        }
+      } else {
+        uploadedList.textContent = 'Could not load uploaded files.';
+      }
+    };
+    xhr.onerror = function(){
+      uploadedList.textContent = 'Could not load uploaded files.';
+    };
+    xhr.send();
   }
 
   function uploadFile(file){
@@ -269,6 +326,7 @@
   }
 
   sendBtn.addEventListener('click', uploadAll);
+  loadUploadedFiles();
 
   // keyboard / accessibility: Enter on dropzone triggers file picker
   dropzone.addEventListener('keydown', (e)=>{ if (e.key === 'Enter' || e.key === ' ') { fileInput.click(); e.preventDefault(); }})
