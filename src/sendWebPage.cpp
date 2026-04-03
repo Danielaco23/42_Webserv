@@ -4,6 +4,13 @@
 #include <algorithm>
 #include <cctype>
 
+/**
+ * @brief Sends a buffer to a socket file descriptor until all bytes are written.
+ * @param fd Socket file descriptor.
+ * @param buf Buffer containing the data to send.
+ * @param len Number of bytes to send from the buffer.
+ * @return true if all bytes were sent successfully, false otherwise.
+ */
 static bool sendAll(int fd, const char *buf, size_t len)
 {
 	size_t sent = 0;
@@ -21,12 +28,22 @@ static bool sendAll(int fd, const char *buf, size_t len)
 	return true;
 }
 
+/**
+ * @brief Sends a string to a socket file descriptor until all bytes are written.
+ * @param fd Socket file descriptor.
+ * @param s String to send.
+ * @return true if all bytes were sent successfully, false otherwise.
+ */
 static bool sendAll(int fd, const std::string &s)
 {
 	return sendAll(fd, s.data(), s.size());
 }
 
-// simple mime-type detection by extension
+/**
+ * @brief Returns a MIME type based on the file extension.
+ * @param path Path of the file being served.
+ * @return A MIME type string suitable for the Content-Type header.
+ */
 static std::string get_mime_type(const std::string &path)
 {
 	size_t pos = path.rfind('.');
@@ -48,8 +65,13 @@ static std::string get_mime_type(const std::string &path)
 	return "application/octet-stream";
 }
 
-// send arbitrary file; if not found or cannot open, send error page
-void Server::send_file(int client_fd, const std::string &filepath, const std::string &path, const std::string &request_id)
+/**
+ * @brief Sends a static file to the client or falls back to a 404 error page.
+ * @param client_fd Socket file descriptor for the client connection.
+ * @param filepath Absolute or relative path to the file to serve.
+ * @param request_id Identifier used for logging and tracing the request.
+ */
+void Server::send_file(int client_fd, const std::string &filepath, const std::string &request_id)
 {
 	std::ifstream file(filepath.c_str(), std::ios::in | std::ios::binary);
 	if (!file)
@@ -61,7 +83,7 @@ void Server::send_file(int client_fd, const std::string &filepath, const std::st
 		char cwd[PATH_MAX];
 		if (getcwd(cwd, sizeof(cwd)) != NULL)
 			std::cerr << "CWD: " << cwd << "\n";
-		send_error_page(client_fd, 404, "Not Found", request_id);
+		send_error_page(client_fd, 404, "Not Found", "The requested resource was not found.", request_id);
 		return ;
 	}
 
@@ -90,7 +112,14 @@ void Server::send_file(int client_fd, const std::string &filepath, const std::st
 	close(client_fd);
 }
 
-// render the error template and send it
+/**
+ * @brief Renders the error template and sends it as an HTTP response.
+ * @param client_fd Socket file descriptor for the client connection.
+ * @param status HTTP status code to return.
+ * @param title Short error title shown in the page and response line.
+ * @param message Detailed error message shown to the client.
+ * @param request_id Identifier used for logging and tracing the request.
+ */
 void Server::send_error_page(int client_fd, int status, const std::string &title, const std::string &message, const std::string &request_id)
 {
 	std::string tpl_path = _www_root.empty() ? std::string("www/errors/template.html") : (_www_root + std::string("/errors/template.html"));
@@ -131,7 +160,7 @@ void Server::send_error_page(int client_fd, int status, const std::string &title
 		html.replace(pos, 14, request_id);
 
 	// select icon and visual class based on status (defaults already created earlier in other edits)
-	std::string icon = "/icons/error.svg";
+	std::string icon = "";
 	std::string visual_class = "";
 	if (status >= 500)
 	{
@@ -143,9 +172,14 @@ void Server::send_error_page(int client_fd, int status, const std::string &title
 		icon = "/icons/client-error.svg";
 		visual_class = "error";
 	}
+	else if (status == 404)
+	{
+		icon = "images/404.avif";
+		visual_class = "not-found";
+	}
 
 	while ((pos = html.find("{{icon}}")) != std::string::npos)
-		html.replace(pos, 8, "images/404.avif");
+		html.replace(pos, 8, icon);
 	while ((pos = html.find("{{visual_class}}")) != std::string::npos)
 		html.replace(pos, 16, visual_class);
 	while ((pos = html.find("{{favicon}}")) != std::string::npos)
@@ -153,15 +187,10 @@ void Server::send_error_page(int client_fd, int status, const std::string &title
 
 	if (status == 404)
 	{
-		std::string suggest = "<p style=\"margin-top:12px;color:#5b6b86;\">Suggestions: check the URL, try <a href=\"/\">home</a>, or search the site.</p>";
-		// insert before </article> to match the template structure
-		size_t insert_pos = html.find("</article>");
+		std::string suggest = "<p style=\"margin-top:0;\">Suggestions: check the URL, try <a href=\"/\">home</a>, or search the site.</p>";
+		size_t insert_pos = html.find("<div class=\"suggestions\"></div>");
 		if (insert_pos != std::string::npos)
-		{
-			// avoid duplicate insertion
-			if (html.find("Suggestions: check the URL") == std::string::npos)
-				html.insert(insert_pos, suggest);
-		}
+			html.replace(insert_pos, 31, "<div class=\"suggestions\">" + suggest + "</div>");
 	}
 
 	std::ostringstream headers;
