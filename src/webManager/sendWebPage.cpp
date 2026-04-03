@@ -204,7 +204,11 @@ void Server::send_file(int client_fd, const std::string &filepath, const std::st
  */
 void Server::send_error_page(int client_fd, int status, const std::string &title, const std::string &message, const std::string &request_id)
 {
-	std::string tpl_path = _www_root.empty() ? std::string("www/errors/template.html") : (_www_root + std::string("/errors/template.html"));
+	std::string tpl_path;
+	if (_www_root.empty())
+		tpl_path = "www/errors/template.html";
+	else
+		tpl_path = _www_root + std::string("/errors/template.html");
 	std::ifstream tpl(tpl_path.c_str());
 	if (!tpl)
 	{

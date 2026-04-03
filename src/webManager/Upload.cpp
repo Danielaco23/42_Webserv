@@ -17,7 +17,9 @@ std::string read_request_body(int client_fd, size_t content_length)
 
 	while (remaining > 0)
 	{
-		size_t to_read = (remaining < chunk_size) ? remaining : chunk_size;
+		size_t to_read = chunk_size;
+		if (remaining < chunk_size)
+			to_read = remaining;
 		ssize_t n = recv(client_fd, buffer, to_read, 0);
 		if (n <= 0)
 			break;
@@ -36,7 +38,11 @@ std::string read_request_body(int client_fd, size_t content_length)
  */
 bool save_uploaded_file(const std::string &www_root, const std::string &filename, const std::string &content)
 {
-	std::string uploads_dir = www_root.empty() ? std::string("www/uploads") : (www_root + "/uploads");
+	std::string uploads_dir;
+	if (www_root.empty())
+		uploads_dir = "www/uploads";
+	else
+		uploads_dir = www_root + "/uploads";
 	
 	// Ensure uploads directory exists
 	struct stat st = {};
