@@ -30,7 +30,7 @@ class Server
 		void acceptConnection();
 
 		int getServerFd() const;
-		void send_file(int client_fd, const std::string &filepath, const std::string &path, const std::string &request_id);
+		void send_file(int client_fd, const std::string &filepath, const std::string &request_id);
 		void send_error_page(int client_fd, int status, const std::string &title, const std::string &message, const std::string &request_id);
 };
 

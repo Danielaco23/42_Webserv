@@ -65,6 +65,7 @@ void Server::startListening()
 		exit(EXIT_FAILURE);
 	}
 	std::cout << "Server listening on port " << _port << std::endl;
+    std::cout << "Try accessing http://localhost:" << _port << " in your browser!" << std::endl;
 }
 
 void Server::acceptConnection()
@@ -137,7 +138,7 @@ void Server::acceptConnection()
     std::cout << "Routing " << path << " -> " << file_path << " (" << request_id << ")" << std::endl;
 
     // attempt to send file; on failure, send 404 using template
-    send_file(client_fd, file_path, path, request_id);
+    send_file(client_fd, file_path, request_id);
     std::cout << "Finished " << request_id << std::endl;
 }
 
