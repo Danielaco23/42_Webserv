@@ -1,24 +1,29 @@
 #ifndef SERVER_HPP
 #define SERVER_HPP
 
-#include <iostream>
-#include <string>
 #include <cstdlib>  // exit, EXIT_FAILURE
 #include <cstdio>   // perror
 #include <cstring> //memset
 #include <unistd.h> //close
 #include <arpa/inet.h> //socket, bind , listen, accept
-
 #include <fstream>
 #include <sstream>
-#include <string>
+#include <dirent.h>
+#include <sys/stat.h>
+#include <iostream>
+#include <vector>
 
 struct HttpRequest
 {
-	std::string 	method;
-	std::string 	path;
-	std::string		version;
-	size_t			_max_Body_Size;	
+	std::string 	_method;
+	std::string 	_file_path;
+	std::string		_req;
+	std::string		_request_id;
+	std::string 	_path;
+	std::string		_version;
+	size_t			_maxBodySize;
+	std::string     _www_root; // absolute path to www directory (computed from exe)
+	int				_client_fd;
 };
 
 class Server
@@ -27,7 +32,6 @@ class Server
 		int                 _server_fd; // fd socket
 		int                 _port;
 		struct sockaddr_in  _address; //ip, port, Af_inet
-		std::string         _www_root; // absolute path to www directory (computed from exe)
 		int				 	_number_of_clients;	// NO SE SI VA A IR AQUI, PERO DE MOMENTO AQUI LO DEJO
 		HttpRequest			_request_data;
 
@@ -36,6 +40,7 @@ class Server
 		~Server();
 
 		void initSocket();
+		void initVariables();
 		void startListening();
 		void acceptConnection();
 
@@ -52,7 +57,7 @@ std::string 	build_uploads_json(const std::string &www_root);
 
 void			handle_post_upload(int client_fd, const std::string &path, const std::string &request_id, const std::string &request, const std::string &www_root);
 void			handle_uploads_listing(int client_fd, const std::string &www_root);
-bool			parse_request_line(const std::string &request, HttpRequest &parsed_request);
-bool			check_response(Server &server, const std::string &req, const std::string &request_id, int client_fd);
+bool			parse_request_line(HttpRequest &parsed_request);
+bool			check_response(Server &server, HttpRequest &parsed_request);
 
 #endif

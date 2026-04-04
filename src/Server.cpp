@@ -5,28 +5,60 @@
 #include <sys/stat.h>
 #include <fstream>
 
+static int hex_to_int(char c)
+{
+	if (c >= '0' && c <= '9')
+		return c - '0';
+	if (c >= 'a' && c <= 'f')
+		return c - 'a' + 10;
+	if (c >= 'A' && c <= 'F')
+		return c - 'A' + 10;
+	return -1;
+}
+
+static std::string url_decode(const std::string &input)
+{
+	std::string out;
+	out.reserve(input.size());
+	for (size_t i = 0; i < input.size(); ++i)
+	{
+		if (input[i] == '%' && i + 2 < input.size())
+		{
+			int hi = hex_to_int(input[i + 1]);
+			int lo = hex_to_int(input[i + 2]);
+			if (hi >= 0 && lo >= 0)
+			{
+				out.push_back(static_cast<char>((hi << 4) | lo));
+				i += 2;
+				continue;
+			}
+		}
+		out.push_back(input[i]);
+	}
+	return out;
+}
+
 /**
- * @brief Normalizes a request path and resolves it against the document root.
- * @param request_path Path extracted from the HTTP request line.
- * @param www_root Document root used to resolve the file path.
- * @param file_path Output resolved filesystem path.
+ * @brief Normalizes the request path and resolves it against the configured document root.
+ * @param request_data Request context containing path input and resolved file output.
  * @return true if the path is valid and resolved successfully, false otherwise.
  */
-static bool resolve_requested_path(const std::string &request_path, const std::string &www_root, std::string &file_path)
+static bool resolve_requested_path(HttpRequest &request_data)
 {
 	std::string normalized_path;
-	if (request_path == "/")
+	if (request_data._path == "/")
 		normalized_path = "/index.html";
 	else
-		normalized_path = request_path;
-    if (normalized_path.find("..") != std::string::npos)
-        return false;
+		normalized_path = request_data._path;
+    
+	if (normalized_path.find("..") != std::string::npos)
+        return (false);
 
-	if (www_root.empty())
-		file_path = std::string("www") + normalized_path;
+	if (request_data._www_root.empty())
+		request_data._file_path = std::string("www") + normalized_path;
 	else
-		file_path = www_root + normalized_path;
-    return true;
+		request_data._file_path = request_data._www_root + normalized_path;
+    return (true);
 }
 
 static std::string build_request_id()
@@ -38,9 +70,10 @@ static std::string build_request_id()
 	return reqid_ss.str();
 }
 
-bool parse_request_line(const std::string &request, HttpRequest &parsed_request)
+bool parse_request_line(HttpRequest &parsed_request)
 {
-	std::istringstream reqstream(request);
+	// Parse only the first HTTP line: METHOD SP PATH SP VERSION CRLF
+	std::istringstream reqstream(parsed_request._req);
 	std::string request_line;
 
 	if (!std::getline(reqstream, request_line))
@@ -49,8 +82,20 @@ bool parse_request_line(const std::string &request, HttpRequest &parsed_request)
 		request_line.erase(request_line.size() - 1);
 
 	std::istringstream line_stream(request_line);
-	if (!(line_stream >> parsed_request.method >> parsed_request.path >> parsed_request.version))
+	if (!(line_stream >> parsed_request._method >> parsed_request._path >> parsed_request._version))
 		return false;
+
+	// Reject malformed request lines with extra tokens.
+	std::string extra_token;
+	if (line_stream >> extra_token)
+		return false;
+
+	size_t query_pos = parsed_request._path.find('?');
+	if (query_pos != std::string::npos)
+		parsed_request._path = parsed_request._path.substr(0, query_pos);
+
+	parsed_request._path = url_decode(parsed_request._path);
+
 	return true;
 }
 
@@ -95,7 +140,7 @@ Server::Server(int port) : _port(port)
         exe_path[len] = '\0';
         char *dirc = strdup(exe_path);
         char *d = dirname(dirc);
-        _www_root = std::string(d) + "/www";
+        this->_request_data._www_root = std::string(d) + "/www";
         free(dirc);
     }
 }
@@ -140,6 +185,18 @@ void Server::initSocket()
 	}
 }
 
+void Server::initVariables()
+{
+	this->_number_of_clients = 0;
+	this->_request_data._method = "";
+	this->_request_data._path = "";
+	this->_request_data._version = "";
+	this->_request_data._maxBodySize = 0;
+	this->_request_data._file_path = "";
+	this->_request_data._req = "";
+	this->_request_data._request_id = "";
+}
+
 void Server::startListening()
 {
 	if (listen(_server_fd, 10) < 0)
@@ -154,65 +211,90 @@ void Server::startListening()
 void Server::acceptConnection()
 {
     struct sockaddr_storage client_addr;
-	std::string file_path;
-	std::string req;
+	// std::string file_path;
+	// std::string req;
     socklen_t addrlen = sizeof(client_addr);
-    int client_fd = accept(_server_fd, (struct sockaddr *)&client_addr, &addrlen);
+    this->_request_data._client_fd = accept(_server_fd, (struct sockaddr *)&client_addr, &addrlen);
 
-    if (client_fd < 0)
+    if (this->_request_data._client_fd < 0)
     {
         perror("accept failed");
         return;
     }
 
-    _number_of_clients = 0;
-	std::string request_id = build_request_id();
+    // _number_of_clients = 0;
+	this->_request_data._request_id = build_request_id();
 
-	if (!receive_request(client_fd, request_id, req) || !check_response(*this, req, request_id, client_fd))
+	if (!receive_request(this->_request_data._client_fd, this->_request_data._request_id, this->_request_data._req) || !check_response(*this, this->_request_data))
 		return;
-	// std::cout << "Request (" << request_id << "):\n" << req << std::endl;
+	// std::cout << "Request (" << this->_request_data._request_id << "):\n" << this->_request_data._req << std::endl;
 
-	if (!parse_request_line(req, _request_data))
+	if (!parse_request_line(this->_request_data))
     {
-        send_error_page(client_fd, 400, "Bad Request", "Malformed request line.", request_id);
+        send_error_page(this->_request_data._client_fd, 400, "Bad Request", "Malformed request line.", this->_request_data._request_id);
         return ;
     }
 
-	if (_request_data.method == "POST")
+	if (this->_request_data._method == "POST")
 	{
-		handle_post_upload(client_fd, _request_data.path, request_id, req, _www_root);
+		handle_post_upload(this->_request_data._client_fd, this->_request_data._path, this->_request_data._request_id, this->_request_data._req, this->_request_data._www_root);
 		return;
 	}
-	else if (_request_data.method != "GET")
+	else if (this->_request_data._method  == "DELETE") 
 	{
-		std::cerr << "Unsupported method: " << _request_data.method << " (" << request_id << ")" << std::endl;
-		send_error_page(client_fd, 405, "Method Not Allowed", "Only GET and POST are supported.", request_id);
+		std::string fullPath;
+		if (this->_request_data._www_root.empty())
+			fullPath = std::string("www") + this->_request_data._path;
+		else
+			fullPath = this->_request_data._www_root + this->_request_data._path;
+		
+		if (std::remove(fullPath.c_str()) == 0) {
+			send_error_page(this->_request_data._client_fd, 204, "No Content", "", this->_request_data._request_id);
+			return;
+		} else {
+			send_error_page(this->_request_data._client_fd, 404, "Not Found", "File not found.", this->_request_data._request_id);
+			return;
+		}
+	}
+	else if (this->_request_data._method != "GET")
+	{
+		std::cerr << "Unsupported method: " << this->_request_data._method << " (" << this->_request_data._request_id << ")" << std::endl;
+		send_error_page(this->_request_data._client_fd, 405, "Method Not Allowed", "Only GET, POST and DELETE are supported.", this->_request_data._request_id);
 		return ;
 	}
-	else if (_request_data.path == "/uploads")
+	else if (this->_request_data._path == "/uploads")
 	{
-		handle_uploads_listing(client_fd, _www_root);
+		handle_uploads_listing(this->_request_data._client_fd, this->_request_data._www_root);
+		return ;
+	}
+	else if (this->_request_data._path == "/showUploads")
+	{
+		// Esto quiero que me lleve a la pagina web de /showUploads, que es un html con js que hace fetch a /uploads para mostrar los archivos subidos
+		std::string show_uploads_path;
+		if (this->_request_data._www_root.empty())
+			show_uploads_path = "www/showUploads/index.html";
+		else
+			show_uploads_path = this->_request_data._www_root + "/showUploads/index.html";
+		send_file(this->_request_data._client_fd, show_uploads_path, this->_request_data._request_id);
 		return ;
 	}
 
-	if (!resolve_requested_path(_request_data.path, _www_root, file_path))
+	if (!resolve_requested_path(this->_request_data))
     {
-        send_error_page(client_fd, 400, "Bad Request", "Invalid path.", request_id);
+        send_error_page(this->_request_data._client_fd, 400, "Bad Request", "Invalid path.", this->_request_data._request_id);
         return;
     }
     
     // In case, we need to keep track of how many clients we have connected
     // SI accede al index, se suma al contador, si se desconecta, se resta.
-    if (file_path.find("index.html") != std::string::npos)
+    if (this->_request_data._file_path.find("index.html") != std::string::npos)
     {
         ++_number_of_clients;
         std::cout << "Number of clients: " << _number_of_clients << std::endl;
     }
 
-	std::cout << "The web asks for " << _request_data.path << " in reality, it is -> " << file_path << " (" << request_id << ")" << std::endl;
-    send_file(client_fd, file_path, request_id);
-
-    // std::cout << "Finished " << request_id << std::endl;
+	std::cout << "The web asks for " << this->_request_data._path << " in reality, it is -> " << this->_request_data._file_path << " (" << this->_request_data._request_id << ")" << std::endl;
+    send_file(this->_request_data._client_fd, this->_request_data._file_path, this->_request_data._request_id);
 }
 
 int Server::getServerFd() const

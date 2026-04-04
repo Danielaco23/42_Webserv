@@ -9,6 +9,7 @@ int main()
     Server server(8080);
 
     server.initSocket();
+    server.initVariables();
     server.startListening();
 
     while (true)
