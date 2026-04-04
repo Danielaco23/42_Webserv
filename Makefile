@@ -34,13 +34,17 @@ VPATH			=	objects/:\
 					includes/:\
 					src/:\
 					src/config/:\
-					src/uploader/:\
+					src/webManager/:\
 
 CXX_SRC			=	main_server.cpp\
 					Server.cpp \
-					uploader/sendWebPage.cpp\
-					uploader/Upload.cpp\
-					uploader/show_uploads.cpp
+					sendWebPage.cpp \
+					Upload.cpp\
+					showUploads.cpp \
+					handleGet.cpp \
+					handlePost.cpp \
+					webChecker.cpp 
+
 
 CXX_OBJ_DIR		=	objects
 CXX_OBJ			=	$(patsubst %.cpp, $(CXX_OBJ_DIR)/%.o, $(CXX_SRC))

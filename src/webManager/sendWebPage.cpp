@@ -1,4 +1,4 @@
-#include "../includes/Server.hpp"
+#include "Server.hpp"
 #include <cerrno>
 #include <limits.h>
 #include <algorithm>
@@ -205,10 +205,10 @@ void Server::send_file(int client_fd, const std::string &filepath, const std::st
 void Server::send_error_page(int client_fd, int status, const std::string &title, const std::string &message, const std::string &request_id)
 {
 	std::string tpl_path;
-	if (_www_root.empty())
+	if (this->_request_data._www_root.empty())
 		tpl_path = "www/errors/template.html";
 	else
-		tpl_path = _www_root + std::string("/errors/template.html");
+		tpl_path = this->_request_data._www_root + std::string("/errors/template.html");
 	std::ifstream tpl(tpl_path.c_str());
 	if (!tpl)
 	{
