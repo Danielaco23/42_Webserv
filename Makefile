@@ -34,11 +34,13 @@ VPATH			=	objects/:\
 					includes/:\
 					src/:\
 					src/config/:\
+					src/uploader/:\
 
 CXX_SRC			=	main_server.cpp\
 					Server.cpp \
-					sendWebPage.cpp\
-					Upload.cpp
+					uploader/sendWebPage.cpp\
+					uploader/Upload.cpp\
+					uploader/show_uploads.cpp
 
 CXX_OBJ_DIR		=	objects
 CXX_OBJ			=	$(patsubst %.cpp, $(CXX_OBJ_DIR)/%.o, $(CXX_SRC))
@@ -84,4 +86,4 @@ leaks: all
 
 .DEFAULT_GOAL: all
 
-.PHONY: all clean fclean re leaks
+.PHONY: all clean fclean re leaksorm
