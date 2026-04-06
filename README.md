@@ -69,3 +69,4 @@ Makefile can't compare with deleted files, and will always mark them as outdated
 
 - Practical guide for HTTP + CGI + uploads:
 	- [docs/GUIA_HTTP_CGI_UPLOADS_PMENDEZ.md](docs/GUIA_HTTP_CGI_UPLOADS_PMENDEZ.md)
+	- [docs/GUIA_CGI_RUTAS_PMENDEZ.md](docs/GUIA_CGI_RUTAS_PMENDEZ.md)
