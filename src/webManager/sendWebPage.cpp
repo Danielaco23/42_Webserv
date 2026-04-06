@@ -190,6 +190,13 @@ void Server::send_file(int client_fd, const std::string &filepath, const std::st
 	std::string headers = build_headers(200, "OK", mime, body.size());
 
 	sendAll(client_fd, headers);
+
+	if (this->_request_data._method == "HEAD")
+    {
+		close(client_fd);
+		return ;
+	}	
+
 	sendAll(client_fd, body);
 	close(client_fd);
 }
