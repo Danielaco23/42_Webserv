@@ -49,6 +49,15 @@
     box-shadow:0 6px 18px rgba(43,124,255,0.14);transition:transform .12s ease, box-shadow .12s ease, opacity .12s ease;
   }
   .btn:hover{transform:translateY(-2px);box-shadow:0 10px 28px rgba(43,124,255,0.14)}
+  .btn.alt{
+    background:linear-gradient(180deg,#e7a407,#fbb00f);
+    color:#2d3a57;
+    border:1px solid rgba(43,124,255,0.22);
+    box-shadow:0 6px 16px rgba(12,24,48,0.08);
+  }
+  .btn.alt:hover{
+    box-shadow:0 10px 24px rgba(12,24,48,0.12);
+  }
   input[type="file"]{display:none}
 
   .meta{padding:12px}
@@ -118,11 +127,16 @@
               <div class="small">Server must accept POST /upload with multipart/form-data.</div>
             </label>
 
-            <div style="margin-top:12px">
+            <div style="margin-top:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
               <button id="sendBtn" class="btn" type="button">Upload</button>
-              <button id="fallbackSubmit" type="submit" style="margin-left:8px">Submit (form)</button>
+              <button id="fallbackSubmit" class="btn alt" type="submit">Submit All</button>
             </div>
           </form>
+
+          <div style="margin-top:12px;display:flex;justify-content:flex-end;">
+            <button id="viewUploadsBtn" class="btn" type="button" onclick="window.location.href='/showUploads'">View Uploaded Files</button>
+          </div>
+
 
           <div id="messages" style="margin-top:12px"></div>
           <div class="hint">Tip: You can drag multiple files at once. Large files will be rejected if they exceed 50MB.</div>
@@ -132,6 +146,8 @@
           <h2 id="uploadListTitle" style="margin:0 0 8px;font-size:1rem">Upload queue</h2>
           <div id="fileList"></div>
           <div id="overall" class="small"></div>
+
+          <div id="uploadedList" class="small">Loading...</div>
         </aside>
       </div>
     </div>
@@ -140,14 +156,14 @@
     </div>
   </div>
 
-  <!-- footer -->
   <div class="footer">
-    <div>© 2026 Demo Upload — built for <strong>42_Webserv</strong></div>
+    <div>© 2026 Uploader — built for <strong>42_Webserv</strong></div>
+    <div>Built by <a href="https://github.com/Danielaco23" target="_blank" rel="noopener noreferrer">dgomez-l</a>, <a href="https://github.com/pauss12" target="_blank" rel="noopener noreferrer">pmendez-</a> and <a href="https://github.com/omarquinaluj" target="_blank" rel="noopener noreferrer">owmarqui</a></div>
     <div style="margin-top:8px">
       <a href="#" style="color:var(--accent);text-decoration:none;margin-right:10px">About</a>
       <a href="#" style="color:var(--accent);text-decoration:none;margin-right:10px">Docs</a>
-      <a href="https://github.com/42-Webserv/42_Webserv" target="_blank" rel="noopener noreferrer">
-        <img src="/www/icons/github.svg" class="gh-icon" alt="GitHub"> Source
+      <a href="https://github.com/Danielaco23/42_Webserv" target="_blank" rel="noopener noreferrer">
+        <img src="/icons/github.svg" class="gh-icon" alt="GitHub"> Source
       </a>
     </div>
   </div>
@@ -158,6 +174,7 @@
   const pickBtn = document.getElementById('pickBtn');
   const dropzone = document.getElementById('dropzone');
   const fileList = document.getElementById('fileList');
+  const uploadedList = document.getElementById('uploadedList');
   const sendBtn = document.getElementById('sendBtn');
   const messages = document.getElementById('messages');
   const form = document.getElementById('uploadForm');
@@ -171,7 +188,9 @@
       const name = document.createElement('div'); name.className='file-name'; name.textContent = f.name;
       const size = document.createElement('div'); size.className='status'; size.textContent = Math.round(f.size/1024) + ' KB';
       const progWrap = document.createElement('div'); progWrap.className='progress';
-      const progBar = document.createElement('i'); progWrap.appendChild(progBar);
+      const progBar = document.createElement('i');
+      progBar.style.width = '0%';
+      progWrap.appendChild(progBar);
       row.appendChild(name); row.appendChild(size); row.appendChild(progWrap);
       fileList.appendChild(row);
       // attach progress node for updates
@@ -196,6 +215,10 @@
 
   pickBtn.addEventListener('click', ()=> fileInput.click());
   fileInput.addEventListener('change', (e)=> addFiles(e.target.files));
+  form.addEventListener('submit', (e)=>{
+    e.preventDefault();
+    uploadAll();
+  });
 
   ;['dragenter','dragover'].forEach(ev=>{
     dropzone.addEventListener(ev, (e)=>{ e.preventDefault(); e.stopPropagation(); dropzone.classList.add('drag'); }, false);
@@ -210,11 +233,60 @@
     messages.textContent = '';
     // upload files sequentially to keep it simple
     (async function next(i){
-  if (i >= files.length) { messages.textContent = 'Uploads completed.'; return; }
+  if (i >= files.length) {
+        messages.textContent = 'Uploads completed.';
+        loadUploadedFiles();
+        return;
+      }
       const f = files[i];
       await uploadFile(f);
       next(i+1);
     })(0);
+  }
+
+  function renderUploadedFiles(filesData){
+    if (!Array.isArray(filesData) || !filesData.length){
+      uploadedList.textContent = 'No uploaded files yet.';
+      return;
+    }
+
+    const list = document.createElement('ul');
+    list.style.margin = '0';
+    list.style.paddingLeft = '18px';
+
+    filesData.forEach((item)=>{
+      const li = document.createElement('li');
+      const kb = Math.round((item.size || 0) / 1024);
+      li.textContent = item.name + ' (' + kb + ' KB)';
+      list.appendChild(li);
+    });
+
+    uploadedList.innerHTML = '';
+    uploadedList.appendChild(list);
+  }
+
+  function loadUploadedFiles(){
+    const xhr = new XMLHttpRequest();
+    xhr.open('GET', '/uploads', true);
+    xhr.onreadystatechange = function(){
+      if (xhr.readyState !== 4)
+        return;
+
+      if (xhr.status >= 200 && xhr.status < 300){
+        try {
+          const payload = JSON.parse(xhr.responseText || '{}');
+          renderUploadedFiles(payload.files || []);
+        } catch (e) {
+          uploadedList.textContent = 'Could not parse uploaded files list.';
+        }
+      } else {
+        uploadedList.textContent = 'Could not load uploaded files.';
+      }
+    };
+    xhr.onerror = function(){
+      uploadedList.textContent = 'Could not load uploaded files.';
+    };
+    xhr.send();
   }
 
   function uploadFile(file){
@@ -223,6 +295,9 @@
       const formData = new FormData();
       // server may expect the field name 'files' or 'file' — adjust if needed
       formData.append('files', file, file.name);
+
+      if (file._ui && file._ui.bar)
+        file._ui.bar.style.width = '0%';
 
       xhr.open('POST', form.action || '/upload', true);
       xhr.upload.addEventListener('progress', (e)=>{
@@ -233,19 +308,29 @@
       });
       xhr.onreadystatechange = function(){
         if (xhr.readyState === 4){
+          if (file._ui && file._ui.bar)
+            file._ui.bar.style.width = '100%';
+
           const ok = xhr.status >= 200 && xhr.status < 300;
-              const statusNode = document.createElement('div'); statusNode.className='status';
-              statusNode.textContent = file.name + ' → ' + (ok ? 'OK' : ('Error: ' + xhr.status));
+          const statusNode = document.createElement('div');
+          statusNode.className='status';
+          statusNode.textContent = file.name + ' → ' + (ok ? 'OK' : ('Error: ' + xhr.status));
           messages.appendChild(statusNode);
           resolve();
         }
       };
-  xhr.onerror = function(){ messages.appendChild(Object.assign(document.createElement('div'),{textContent:'Network error'})); resolve(); };
+      xhr.onerror = function(){
+        if (file._ui && file._ui.bar)
+          file._ui.bar.style.width = '100%';
+        messages.appendChild(Object.assign(document.createElement('div'),{textContent:'Network error'}));
+        resolve();
+      };
       xhr.send(formData);
     });
   }
 
   sendBtn.addEventListener('click', uploadAll);
+  loadUploadedFiles();
 
   // keyboard / accessibility: Enter on dropzone triggers file picker
   dropzone.addEventListener('keydown', (e)=>{ if (e.key === 'Enter' || e.key === ' ') { fileInput.click(); e.preventDefault(); }})
