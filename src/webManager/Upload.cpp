@@ -1,6 +1,58 @@
-#include "../includes/Server.hpp"
+#include "Server.hpp"
 #include <fstream>
 #include <sys/stat.h>
+#include <cctype>
+
+static std::string basename_from_upload_name(const std::string &name)
+{
+	size_t slash = name.find_last_of('/');
+	size_t backslash = name.find_last_of('\\');
+	size_t pos = std::string::npos;
+
+	if (slash != std::string::npos && backslash != std::string::npos)
+		pos = (slash > backslash) ? slash : backslash;
+	else if (slash != std::string::npos)
+		pos = slash;
+	else
+		pos = backslash;
+
+	if (pos == std::string::npos)
+		return name;
+	return name.substr(pos + 1);
+}
+
+static bool is_safe_upload_filename(const std::string &name)
+{
+	if (name.empty() || name == "." || name == "..")
+		return false;
+	if (name.find("..") != std::string::npos)
+		return false;
+	if (name.find('/') != std::string::npos || name.find('\\') != std::string::npos)
+		return false;
+
+	for (size_t i = 0; i < name.size(); ++i)
+	{
+		unsigned char c = static_cast<unsigned char>(name[i]);
+		if (!(std::isalnum(c) || c == '.' || c == '-' || c == '_'))
+			return false;
+	}
+	return true;
+}
+
+static bool is_suspicious_raw_filename(const std::string &raw_name)
+{
+	if (raw_name.empty())
+		return true;
+	if (raw_name.find("..") != std::string::npos)
+		return true;
+	for (size_t i = 0; i < raw_name.size(); ++i)
+	{
+		unsigned char c = static_cast<unsigned char>(raw_name[i]);
+		if (c < 32)
+			return true;
+	}
+	return false;
+}
 
 /**
  * @brief Reads the full body of a POST request from the socket.
@@ -38,6 +90,13 @@ std::string read_request_body(int client_fd, size_t content_length)
  */
 bool save_uploaded_file(const std::string &www_root, const std::string &filename, const std::string &content)
 {
+	if (is_suspicious_raw_filename(filename))
+		return false;
+
+	std::string safe_name = basename_from_upload_name(filename);
+	if (!is_safe_upload_filename(safe_name))
+		return false;
+
 	std::string uploads_dir;
 	if (www_root.empty())
 		uploads_dir = "www/uploads";
@@ -49,7 +108,7 @@ bool save_uploaded_file(const std::string &www_root, const std::string &filename
 	if (stat(uploads_dir.c_str(), &st) == -1)
 		mkdir(uploads_dir.c_str(), 0755);
 	
-	std::string file_path = uploads_dir + "/" + filename;
+	std::string file_path = uploads_dir + "/" + safe_name;
 	std::ofstream out(file_path.c_str(), std::ios::binary);
 	if (!out)
 		return false;

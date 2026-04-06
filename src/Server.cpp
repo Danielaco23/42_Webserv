@@ -38,29 +38,6 @@ static std::string url_decode(const std::string &input)
 	return out;
 }
 
-/**
- * @brief Normalizes the request path and resolves it against the configured document root.
- * @param request_data Request context containing path input and resolved file output.
- * @return true if the path is valid and resolved successfully, false otherwise.
- */
-static bool resolve_requested_path(HttpRequest &request_data)
-{
-	std::string normalized_path;
-	if (request_data._path == "/")
-		normalized_path = "/index.html";
-	else
-		normalized_path = request_data._path;
-    
-	if (normalized_path.find("..") != std::string::npos)
-        return (false);
-
-	if (request_data._www_root.empty())
-		request_data._file_path = std::string("www") + normalized_path;
-	else
-		request_data._file_path = request_data._www_root + normalized_path;
-    return (true);
-}
-
 static std::string build_request_id()
 {
 	static unsigned long req_counter = 0;
@@ -96,30 +73,6 @@ bool parse_request_line(HttpRequest &parsed_request)
 
 	parsed_request._path = url_decode(parsed_request._path);
 
-	return true;
-}
-
-static bool receive_request(int client_fd, const std::string &request_id, std::string &request)
-{
-	char buffer[1024];
-	int bytes_read = recv(client_fd, buffer, 1023, 0);
-
-	if (bytes_read < 0)
-	{
-		perror("recv failed");
-		close(client_fd);
-		return false;
-	}
-
-	if (bytes_read == 0)
-	{
-		std::cerr << "Client closed connection before sending data (" << request_id << ")" << std::endl;
-		close(client_fd);
-		return false;
-	}
-
-	buffer[bytes_read] = '\0';
-	request.assign(buffer);
 	return true;
 }
 
@@ -222,79 +175,8 @@ void Server::acceptConnection()
         return;
     }
 
-    // _number_of_clients = 0;
 	this->_request_data._request_id = build_request_id();
-
-	if (!receive_request(this->_request_data._client_fd, this->_request_data._request_id, this->_request_data._req) || !check_response(*this, this->_request_data))
-		return;
-	// std::cout << "Request (" << this->_request_data._request_id << "):\n" << this->_request_data._req << std::endl;
-
-	if (!parse_request_line(this->_request_data))
-    {
-        send_error_page(this->_request_data._client_fd, 400, "Bad Request", "Malformed request line.", this->_request_data._request_id);
-        return ;
-    }
-
-	if (this->_request_data._method == "POST")
-	{
-		handle_post_upload(this->_request_data._client_fd, this->_request_data._path, this->_request_data._request_id, this->_request_data._req, this->_request_data._www_root);
-		return;
-	}
-	else if (this->_request_data._method  == "DELETE") 
-	{
-		std::string fullPath;
-		if (this->_request_data._www_root.empty())
-			fullPath = std::string("www") + this->_request_data._path;
-		else
-			fullPath = this->_request_data._www_root + this->_request_data._path;
-		
-		if (std::remove(fullPath.c_str()) == 0) {
-			send_error_page(this->_request_data._client_fd, 204, "No Content", "", this->_request_data._request_id);
-			return;
-		} else {
-			send_error_page(this->_request_data._client_fd, 404, "Not Found", "File not found.", this->_request_data._request_id);
-			return;
-		}
-	}
-	else if (this->_request_data._method != "GET")
-	{
-		std::cerr << "Unsupported method: " << this->_request_data._method << " (" << this->_request_data._request_id << ")" << std::endl;
-		send_error_page(this->_request_data._client_fd, 405, "Method Not Allowed", "Only GET, POST and DELETE are supported.", this->_request_data._request_id);
-		return ;
-	}
-	else if (this->_request_data._path == "/uploads")
-	{
-		handle_uploads_listing(this->_request_data._client_fd, this->_request_data._www_root);
-		return ;
-	}
-	else if (this->_request_data._path == "/showUploads")
-	{
-		// Esto quiero que me lleve a la pagina web de /showUploads, que es un html con js que hace fetch a /uploads para mostrar los archivos subidos
-		std::string show_uploads_path;
-		if (this->_request_data._www_root.empty())
-			show_uploads_path = "www/showUploads/index.html";
-		else
-			show_uploads_path = this->_request_data._www_root + "/showUploads/index.html";
-		send_file(this->_request_data._client_fd, show_uploads_path, this->_request_data._request_id);
-		return ;
-	}
-
-	if (!resolve_requested_path(this->_request_data))
-    {
-        send_error_page(this->_request_data._client_fd, 400, "Bad Request", "Invalid path.", this->_request_data._request_id);
-        return;
-    }
-    
-    // In case, we need to keep track of how many clients we have connected
-    // SI accede al index, se suma al contador, si se desconecta, se resta.
-    if (this->_request_data._file_path.find("index.html") != std::string::npos)
-    {
-        ++_number_of_clients;
-        std::cout << "Number of clients: " << _number_of_clients << std::endl;
-    }
-
-	std::cout << "The web asks for " << this->_request_data._path << " in reality, it is -> " << this->_request_data._file_path << " (" << this->_request_data._request_id << ")" << std::endl;
-    send_file(this->_request_data._client_fd, this->_request_data._file_path, this->_request_data._request_id);
+	handleRequest();
 }
 
 int Server::getServerFd() const
