@@ -10,12 +10,52 @@
  */
 bool check_response(Server &server, HttpRequest &parsed_request)
 {
-	if (!parse_request_line(parsed_request))
+    size_t line_end = parsed_request._req.find("\r\n");
+    if (line_end == std::string::npos)
+        line_end = parsed_request._req.find('\n');
+    if (line_end == std::string::npos)
     {
-            server.send_error_page(parsed_request._client_fd, 400, "Bad Request", "Malformed request line.", parsed_request._request_id);
-        return (false);
+        server.send_error_page(parsed_request._client_fd, 400, "Bad Request", "Malformed request line.", parsed_request._request_id);
+        return false;
     }
-    return (true);
+
+    std::string request_line = parsed_request._req.substr(0, line_end);
+    std::istringstream line_stream(request_line);
+    std::string method;
+    std::string path;
+    std::string version;
+    if (!(line_stream >> method >> path >> version))
+    {
+        server.send_error_page(parsed_request._client_fd, 400, "Bad Request", "Malformed request line.", parsed_request._request_id);
+        return false;
+    }
+
+    std::string extra_token;
+    if (line_stream >> extra_token)
+    {
+        server.send_error_page(parsed_request._client_fd, 400, "Bad Request", "Malformed request line.", parsed_request._request_id);
+        return false;
+    }
+
+    if (version != "HTTP/1.1")
+    {
+        server.send_error_page(parsed_request._client_fd, 505, "HTTP Version Not Supported", "Only HTTP/1.1 is supported.", parsed_request._request_id);
+        return false;
+    }
+
+    if (parsed_request._req.find("\r\n\r\n") == std::string::npos && parsed_request._req.find("\n\n") == std::string::npos)
+    {
+        server.send_error_page(parsed_request._client_fd, 400, "Bad Request", "Malformed headers.", parsed_request._request_id);
+        return false;
+    }
+
+    if (parsed_request._req.find("\nHost:") == std::string::npos && parsed_request._req.find("\r\nHost:") == std::string::npos)
+    {
+        server.send_error_page(parsed_request._client_fd, 400, "Bad Request", "Host header required.", parsed_request._request_id);
+        return false;
+    }
+
+    return true;
 }
 
 /**
