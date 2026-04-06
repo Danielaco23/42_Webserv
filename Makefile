@@ -43,7 +43,9 @@ CXX_SRC			=	main_server.cpp\
 					showUploads.cpp \
 					handleGet.cpp \
 					handlePost.cpp \
-					webChecker.cpp 
+					handleCgi.cpp \
+					webChecker.cpp \
+					handleRequests.cpp
 
 
 CXX_OBJ_DIR		=	objects
