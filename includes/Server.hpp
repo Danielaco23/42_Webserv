@@ -48,11 +48,21 @@ class Server
 		struct sockaddr_in  _address; //ip, port, Af_inet
 		int				 	_number_of_clients;	// NO SE SI VA A IR AQUI, PERO DE MOMENTO AQUI LO DEJO
 		HttpRequest			_request_data;
+  
+    std::vector<struct pollfd>_fds;
+    std::map<int, Client> _clients;
+  
+    void acceptClient();
+    void handleClientRead(int fd);
+    void handleClientWrite(int fd);
+    void removeClient(int fd);
+  
 	public:
 		Server(int port);
 		~Server();
 
 		void 	initSocket();
+    void run();
 		void 	initVariables();
 		void 	startListening();
 		void	acceptConnection();

@@ -92,4 +92,4 @@ leaks: all
 
 .DEFAULT_GOAL: all
 
-.PHONY: all clean fclean re leaksorm
+.PHONY: all clean fclean re leaks
