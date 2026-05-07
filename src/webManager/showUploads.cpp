@@ -48,7 +48,7 @@ std::string build_uploads_json(const std::string &www_root)
 			json << ",";
 		first = false;
 
-		json << "{\"name\":\"" << escape_json(name) << "\",\"size\":" << st.st_size << "}";
+        json << "{\"name\":\"" << escape_json(name) << "\",\"size\":" << st.st_size << ",\"mtime\":" << static_cast<long long>(st.st_mtime) << "}";
 	}
 
 	closedir(dir);

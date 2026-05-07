@@ -4,6 +4,9 @@
 #include <unistd.h>
 #include <sys/stat.h>
 #include <fstream>
+#ifdef __APPLE__
+#include <mach-o/dyld.h>
+#endif
 
 static int hex_to_int(char c)
 {
@@ -47,6 +50,48 @@ static std::string build_request_id()
 	return reqid_ss.str();
 }
 
+static std::string get_executable_dir()
+{
+	char exe_path[PATH_MAX];
+	std::string dir;
+
+#ifdef __APPLE__
+	uint32_t size = sizeof(exe_path);
+	if (_NSGetExecutablePath(exe_path, &size) == 0)
+	{
+		char *dirc = strdup(exe_path);
+		if (dirc != NULL)
+		{
+			char *resolved_dir = dirname(dirc);
+			if (resolved_dir != NULL)
+				dir = resolved_dir;
+			free(dirc);
+		}
+	}
+#else
+	ssize_t len = readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1);
+	if (len != -1)
+	{
+		exe_path[len] = '\0';
+		char *dirc = strdup(exe_path);
+		if (dirc != NULL)
+		{
+			char *resolved_dir = dirname(dirc);
+			if (resolved_dir != NULL)
+				dir = resolved_dir;
+			free(dirc);
+		}
+	}
+#endif
+	if (dir.empty())
+	{
+		char cwd[PATH_MAX];
+		if (getcwd(cwd, sizeof(cwd)) != NULL)
+			dir = cwd;
+	}
+	return dir;
+}
+
 bool parse_request_line(HttpRequest &parsed_request)
 {
 	// Parse only the first HTTP line: METHOD SP PATH SP VERSION CRLF
@@ -85,17 +130,9 @@ Server::Server(int port) : _server_fd(-1), _port(port)
 {
     std::memset(&_address, 0, sizeof(_address));
 
-    // compute executable directory and set _www_root to <exe_dir>/www
-    char exe_path[PATH_MAX];
-    ssize_t len = readlink("/proc/self/exe", exe_path, sizeof(exe_path)-1);
-    if (len != -1)
-    {
-        exe_path[len] = '\0';
-        char *dirc = strdup(exe_path);
-        char *d = dirname(dirc);
-        this->_request_data._www_root = std::string(d) + "/www";
-        free(dirc);
-    }
+	std::string base_dir = get_executable_dir();
+	if (!base_dir.empty())
+		this->_request_data._www_root = base_dir + "/www";
 }
 
 Server::~Server()

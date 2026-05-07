@@ -250,14 +250,21 @@
       return;
     }
 
+    var sortedFiles = filesData.slice(0);
+    sortedFiles.sort(function (left, right) {
+      return (Number(right && right.mtime) || 0) - (Number(left && left.mtime) || 0);
+    });
+
     const list = document.createElement('ul');
     list.style.margin = '0';
     list.style.paddingLeft = '18px';
 
-    filesData.forEach((item)=>{
+    sortedFiles.forEach((item)=>{
       const li = document.createElement('li');
       const kb = Math.round((item.size || 0) / 1024);
       li.textContent = item.name + ' (' + kb + ' KB)';
+      if (/\.(png|jpe?g|gif|webp|avif|svg)$/i.test(String(item && item.name ? item.name : '')))
+        li.className = 'highlight-file';
       list.appendChild(li);
     });
 
