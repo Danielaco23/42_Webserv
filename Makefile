@@ -37,6 +37,7 @@ VPATH			=	objects/:\
 					src/webManager/:\
 
 CXX_SRC			=	main_server.cpp\
+					Client.cpp \
 					Server.cpp \
 					sendWebPage.cpp \
 					Upload.cpp\
