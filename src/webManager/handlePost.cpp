@@ -1,6 +1,30 @@
 #include "Server.hpp"
+#include <cstdlib>
 
-static const size_t kMaxUploadBodyBytes = 50 * 1024 * 1024;
+static size_t get_max_upload_body_bytes()
+{
+	const char *env = getenv("WEBSERV_MAX_UPLOAD_BYTES");
+	if (!env)
+		return 1000000; // default 1MB to keep tests expecting 1MB limit
+
+	std::string s(env);
+	// allow suffix 'M' or 'm' to mean megabytes
+	if (!s.empty() && (s.back() == 'M' || s.back() == 'm'))
+	{
+		s.pop_back();
+		try
+		{
+			size_t v = static_cast<size_t>(stoul(s));
+			return v * 1024 * 1024;
+		}
+		catch (...) { return 1000000; }
+	}
+	try
+	{
+		return static_cast<size_t>(stoul(s));
+	}
+	catch (...) { return 1000000; }
+}
 
 static void respond_upload_success(int client_fd)
 {
@@ -115,7 +139,7 @@ void handle_post_upload(int client_fd, const std::string &path, const std::strin
 		respond_text_error(client_fd, 411, "Length Required", "Content-Length header required");
 		return;
 	}
-	if (content_length > kMaxUploadBodyBytes)
+	if (content_length > get_max_upload_body_bytes())
 	{
 		respond_text_error(client_fd, 413, "Payload Too Large", "Payload too large.\n");
 		return;
