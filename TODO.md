@@ -36,3 +36,4 @@ ServWeb
 
 	Perfecto para alguien que quiera pelearse con HTTP y procesos.
 
+// PARA CUANDO ESTE EL LOCATION, MIRAR CUALES SON LAS RUTAS DE LOS INDEX O PAGUNAS DE ERROR, SINO, USAR LAS MIAS

@@ -33,7 +33,7 @@ static bool is_safe_upload_filename(const std::string &name)
 	for (size_t i = 0; i < name.size(); ++i)
 	{
 		unsigned char c = static_cast<unsigned char>(name[i]);
-		if (!(std::isalnum(c) || c == '.' || c == '-' || c == '_'))
+		if (c < 32 || c == 127)
 			return false;
 	}
 	return true;

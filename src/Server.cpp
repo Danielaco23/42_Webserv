@@ -4,6 +4,10 @@
 #include <unistd.h>
 #include <sys/stat.h>
 #include <fstream>
+#include <fcntl.h>
+#ifdef __APPLE__
+#include <mach-o/dyld.h>
+#endif
 
 static int hex_to_int(char c)
 {
@@ -47,6 +51,48 @@ static std::string build_request_id()
 	return reqid_ss.str();
 }
 
+static std::string get_executable_dir()
+{
+	char exe_path[PATH_MAX];
+	std::string dir;
+
+#ifdef __APPLE__
+	uint32_t size = sizeof(exe_path);
+	if (_NSGetExecutablePath(exe_path, &size) == 0)
+	{
+		char *dirc = strdup(exe_path);
+		if (dirc != NULL)
+		{
+			char *resolved_dir = dirname(dirc);
+			if (resolved_dir != NULL)
+				dir = resolved_dir;
+			free(dirc);
+		}
+	}
+#else
+	ssize_t len = readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1);
+	if (len != -1)
+	{
+		exe_path[len] = '\0';
+		char *dirc = strdup(exe_path);
+		if (dirc != NULL)
+		{
+			char *resolved_dir = dirname(dirc);
+			if (resolved_dir != NULL)
+				dir = resolved_dir;
+			free(dirc);
+		}
+	}
+#endif
+	if (dir.empty())
+	{
+		char cwd[PATH_MAX];
+		if (getcwd(cwd, sizeof(cwd)) != NULL)
+			dir = cwd;
+	}
+	return dir;
+}
+
 bool parse_request_line(HttpRequest &parsed_request)
 {
 	// Parse only the first HTTP line: METHOD SP PATH SP VERSION CRLF
@@ -80,22 +126,15 @@ bool parse_request_line(HttpRequest &parsed_request)
  * @brief Constructs a Server instance.
  * @param port Port number to listen on.
  */
-Server::Server(int port) : _port(port)
-Server::Server(int port) : _server_fd(-1), _port(port)
+Server::Server(int port) : _server_fd(-1), _port(port), _number_of_clients(0)
 {
     std::memset(&_address, 0, sizeof(_address));
 
-    // compute executable directory and set _www_root to <exe_dir>/www
-    char exe_path[PATH_MAX];
-    ssize_t len = readlink("/proc/self/exe", exe_path, sizeof(exe_path)-1);
-    if (len != -1)
-    {
-        exe_path[len] = '\0';
-        char *dirc = strdup(exe_path);
-        char *d = dirname(dirc);
-        this->_request_data._www_root = std::string(d) + "/www";
-        free(dirc);
-    }
+	std::string base_dir = get_executable_dir();
+	if (!base_dir.empty())
+		this->_request_data._www_root = base_dir + "/www";
+
+    initVariables();
 }
 
 Server::~Server()
@@ -116,14 +155,16 @@ void Server::initSocket()
         perror("socket failed");
         exit(EXIT_FAILURE);
     }
+
     int opt = 1;
-    if (setsockopt(_server_fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt)) < 0)
+    if (setsockopt(_server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0)
     {
         perror("setsockopt failed");
         exit(EXIT_FAILURE);
     }
+
     _address.sin_family = AF_INET;
-    _address.sin_addr.s_addr =  INADDR_ANY; // acepta cualquier IP
+    _address.sin_addr.s_addr = INADDR_ANY;
     _address.sin_port = htons(_port);
 
     if (bind(_server_fd, (struct sockaddr *)&_address, sizeof(_address)) < 0)
@@ -131,23 +172,6 @@ void Server::initSocket()
         perror("bind failed");
         exit(EXIT_FAILURE);
     }
-
-    if (listen(_server_fd, 100) < 0)
-    {
-        perror("listen failed");
-        exit(EXIT_FAILURE);
-    }
-
-    // Non blocking
-    fcntl(_server_fd, F_SETFL, O_NONBLOCK);
-
-    //poll
-    struct pollfd pfd;
-    pfd.fd = _server_fd;
-    pfd.events = POLLIN;
-    _fds.push_back(pfd);
-
-    std::cout << "Server running on port " << _port << std::endl;
 }
 
 void Server::initVariables()
@@ -171,8 +195,41 @@ void Server::startListening()
 	}
 	std::cout << "Server listening on port " << _port << std::endl;
     std::cout << "Try accessing http://localhost:" << _port << " in your browser!" << std::endl << std::endl;
+}
+
+void Server::acceptConnection()
+{
+    struct sockaddr_storage client_addr;
+    socklen_t addrlen = sizeof(client_addr);
+    this->_request_data._client_fd = accept(_server_fd, (struct sockaddr *)&client_addr, &addrlen);
+
+    if (this->_request_data._client_fd < 0)
+    {
+        perror("accept failed");
+        return;
+    }
+
+    this->_request_data._request_id = build_request_id();
+    handleRequest();
+}
+
 void Server::run()
 {
+    if (fcntl(_server_fd, F_SETFL, O_NONBLOCK) < 0)
+    {
+        perror("fcntl failed");
+        exit(EXIT_FAILURE);
+    }
+
+    if (_fds.empty())
+    {
+        struct pollfd pfd;
+        pfd.fd = _server_fd;
+        pfd.events = POLLIN;
+        pfd.revents = 0;
+        _fds.push_back(pfd);
+    }
+
     while (true)
     {
         if (poll(&_fds[0], _fds.size(), -1) < 0)
@@ -206,13 +263,6 @@ void Server::run()
 
 void Server::acceptClient()
 {
-    struct sockaddr_storage client_addr;
-	// std::string file_path;
-	// std::string req;
-    socklen_t addrlen = sizeof(client_addr);
-    this->_request_data._client_fd = accept(_server_fd, (struct sockaddr *)&client_addr, &addrlen);
-
-    if (this->_request_data._client_fd < 0)
     int client_fd = accept(_server_fd, NULL, NULL);
     if (client_fd < 0)
     {
@@ -220,18 +270,20 @@ void Server::acceptClient()
         return;
     }
 
-	this->_request_data._request_id = build_request_id();
-	handleRequest();
-    fcntl(client_fd, F_SETFL, O_NONBLOCK);
+    if (fcntl(client_fd, F_SETFL, O_NONBLOCK) < 0)
+    {
+        perror("fcntl failed");
+        close(client_fd);
+        return;
+    }
 
     struct pollfd pfd;
     pfd.fd = client_fd;
     pfd.events = POLLIN;
+    pfd.revents = 0;
     _fds.push_back(pfd);
 
     _clients.insert(std::make_pair(client_fd, Client(client_fd)));
-
-    std::cout << "New client connected!" << std::endl;
 }
 
 void Server::handleClientRead(int fd)
@@ -313,7 +365,7 @@ void Server::removeClient(int fd)
     std::cout << "Client disconnected: " << fd << std::endl;
 }
 
-//int Server::getServerFd() const
-//{
-//    return _server_fd;
-//}
+int Server::getServerFd() const
+{
+    return _server_fd;
+}

@@ -12,6 +12,9 @@
 #include <sys/stat.h>
 #include <iostream>
 #include <vector>
+#include <map>
+#include <poll.h>
+#include "Client.hpp"
 
 # define GREEN "\033[0;32m"
 # define WHITE "\033[37m"

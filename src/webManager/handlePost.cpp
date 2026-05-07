@@ -1,11 +1,24 @@
 #include "Server.hpp"
 
-static const size_t kMaxUploadBodyBytes = 1000000;
+static const size_t kMaxUploadBodyBytes = 50 * 1024 * 1024;
 
 static void respond_upload_success(int client_fd)
 {
 	std::string response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 16\r\nConnection: close\r\n\r\nFiles uploaded.\n";
 	send(client_fd, response.c_str(), response.size(), 0);
+	close(client_fd);
+}
+
+static void respond_text_error(int client_fd, int status, const std::string &title, const std::string &message)
+{
+	std::ostringstream response;
+	response << "HTTP/1.1 " << status << " " << title << "\r\n"
+			 << "Content-Type: text/plain\r\n"
+			 << "Content-Length: " << message.size() << "\r\n"
+			 << "Connection: close\r\n\r\n"
+			 << message;
+	std::string out = response.str();
+	send(client_fd, out.c_str(), out.size(), 0);
 	close(client_fd);
 }
 
@@ -92,25 +105,19 @@ void handle_post_upload(int client_fd, const std::string &path, const std::strin
 	std::string buffered_body;
 	if (!split_headers_and_body(request, headers_part, buffered_body))
 	{
-		std::string response = "HTTP/1.1 400 Bad Request\r\nContent-Type: text/plain\r\nContent-Length: 16\r\nConnection: close\r\n\r\nMalformed request";
-		send(client_fd, response.c_str(), response.size(), 0);
-		close(client_fd);
+		respond_text_error(client_fd, 400, "Bad Request", "Malformed request");
 		return;
 	}
 
 	size_t content_length = extract_content_length(headers_part);
 	if (content_length == 0 && headers_part.find("Content-Length:") == std::string::npos)
 	{
-		std::string response = "HTTP/1.1 411 Length Required\r\nContent-Type: text/plain\r\nContent-Length: 29\r\nConnection: close\r\n\r\nContent-Length header required";
-		send(client_fd, response.c_str(), response.size(), 0);
-		close(client_fd);
+		respond_text_error(client_fd, 411, "Length Required", "Content-Length header required");
 		return;
 	}
 	if (content_length > kMaxUploadBodyBytes)
 	{
-		std::string response = "HTTP/1.1 413 Payload Too Large\r\nContent-Type: text/plain\r\nContent-Length: 22\r\nConnection: close\r\n\r\nPayload too large.\n";
-		send(client_fd, response.c_str(), response.size(), 0);
-		close(client_fd);
+		respond_text_error(client_fd, 413, "Payload Too Large", "Payload too large.\n");
 		return;
 	}
 
@@ -123,18 +130,14 @@ void handle_post_upload(int client_fd, const std::string &path, const std::strin
 
 	if (boundary.empty())
 	{
-		std::string response = "HTTP/1.1 400 Bad Request\r\nContent-Type: text/plain\r\nContent-Length: 29\r\nConnection: close\r\n\r\nInvalid multipart form request.";
-		send(client_fd, response.c_str(), response.size(), 0);
-		close(client_fd);
+		respond_text_error(client_fd, 400, "Bad Request", "Invalid multipart form request.");
 		return;
 	}
 
 	int saved_files = save_multipart_files(body, boundary, www_root);
 	if (saved_files <= 0)
 	{
-		std::string response = "HTTP/1.1 400 Bad Request\r\nContent-Type: text/plain\r\nContent-Length: 29\r\nConnection: close\r\n\r\nNo valid files found in upload.";
-		send(client_fd, response.c_str(), response.size(), 0);
-		close(client_fd);
+		respond_text_error(client_fd, 400, "Bad Request", "No valid files found in upload.");
 		return;
 	}
 
