@@ -26,6 +26,25 @@ static bool send_all(int fd, const std::string &data)
 	return true;
 }
 
+static bool write_all(int fd, const std::string &data)
+{
+	size_t sent = 0;
+	while (sent < data.size())
+	{
+		ssize_t n = write(fd, data.c_str() + sent, data.size() - sent);
+		if (n < 0)
+		{
+			if (errno == EINTR)
+				continue;
+			return false;
+		}
+		if (n == 0)
+			return false;
+		sent += static_cast<size_t>(n);
+	}
+	return true;
+}
+
 static bool starts_with(const std::string &value, const std::string &prefix)
 {
 	return value.compare(0, prefix.size(), prefix) == 0;
@@ -122,6 +141,62 @@ static std::string choose_interpreter(const std::string &script_path)
 	if (ext == ".sh")
 		return "/bin/bash";
 	return "";
+}
+
+static bool is_executable_file(const std::string &path)
+{
+	return access(path.c_str(), X_OK) == 0;
+}
+
+static bool has_binary_magic(const std::string &path)
+{
+	std::ifstream file(path.c_str(), std::ios::in | std::ios::binary);
+	if (!file)
+		return false;
+
+	unsigned char magic[4] = {0, 0, 0, 0};
+	file.read(reinterpret_cast<char *>(magic), 4);
+	if (file.gcount() < 4)
+		return false;
+
+	if (magic[0] == 0x7f && magic[1] == 'E' && magic[2] == 'L' && magic[3] == 'F')
+		return true;
+
+	const unsigned char mach_o_magic[][4] = {
+		{0xfe, 0xed, 0xfa, 0xce},
+		{0xfe, 0xed, 0xfa, 0xcf},
+		{0xce, 0xfa, 0xed, 0xfe},
+		{0xcf, 0xfa, 0xed, 0xfe},
+		{0xca, 0xfe, 0xba, 0xbe},
+		{0xbe, 0xba, 0xfe, 0xca},
+		{0xca, 0xfe, 0xba, 0xbf},
+		{0xbf, 0xba, 0xfe, 0xca}
+	};
+
+	for (size_t i = 0; i < sizeof(mach_o_magic) / sizeof(mach_o_magic[0]); ++i)
+	{
+		if (magic[0] == mach_o_magic[i][0]
+			&& magic[1] == mach_o_magic[i][1]
+			&& magic[2] == mach_o_magic[i][2]
+			&& magic[3] == mach_o_magic[i][3])
+			return true;
+	}
+
+	return false;
+}
+
+static bool is_elf_binary(const std::string &path)
+{
+	std::ifstream file(path.c_str(), std::ios::in | std::ios::binary);
+	if (!file)
+		return false;
+
+	unsigned char magic[4] = {0, 0, 0, 0};
+	file.read(reinterpret_cast<char *>(magic), 4);
+	if (file.gcount() < 4)
+		return false;
+
+	return (magic[0] == 0x7f && magic[1] == 'E' && magic[2] == 'L' && magic[3] == 'F');
 }
 
 static bool split_headers_body(const std::string &raw, std::string &headers, std::string &body)
@@ -250,20 +325,33 @@ bool handle_cgi_request(Server &server, HttpRequest &request_data)
 		return true;
 	}
 
-	std::string interpreter = choose_interpreter(script_path);
-	if (interpreter.empty())
-	{
-		std::string msg = "HTTP/1.1 415 Unsupported Media Type\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Length: 37\r\nConnection: close\r\n\r\nUnsupported CGI script extension.\n";
-		send_all(request_data._client_fd, msg);
-		close(request_data._client_fd);
-		return true;
-	}
-
 	std::string fs_script = "." + script_path;
 	struct stat st;
 	if (stat(fs_script.c_str(), &st) != 0 || !S_ISREG(st.st_mode))
 	{
 		server.send_error_page(request_data._client_fd, 404, "Not Found", "CGI script not found.", request_data._request_id);
+		return true;
+	}
+
+#ifdef __APPLE__
+	if (is_elf_binary(fs_script))
+	{
+		std::string msg = "HTTP/1.1 415 Unsupported Media Type\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Length: 70\r\nConnection: close\r\n\r\nELF CGI binary is not supported on macOS. Use script or Mach-O binary.\n";
+		send_all(request_data._client_fd, msg);
+		close(request_data._client_fd);
+		return true;
+	}
+#endif
+
+	std::string interpreter;
+	bool can_exec = is_executable_file(fs_script);
+	interpreter = choose_interpreter(script_path);
+	bool run_directly = can_exec && (interpreter.empty() || has_binary_magic(fs_script));
+	if (!run_directly && interpreter.empty())
+	{
+		std::string msg = "HTTP/1.1 415 Unsupported Media Type\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Length: 37\r\nConnection: close\r\n\r\nUnsupported CGI script extension.\n";
+		send_all(request_data._client_fd, msg);
+		close(request_data._client_fd);
 		return true;
 	}
 
@@ -335,20 +423,33 @@ bool handle_cgi_request(Server &server, HttpRequest &request_data)
 			envp.push_back(const_cast<char *>(env[i].c_str()));
 		envp.push_back(NULL);
 
-		char *argv[3];
-		argv[0] = const_cast<char *>(interpreter.c_str());
-		argv[1] = const_cast<char *>(fs_script.c_str());
-		argv[2] = NULL;
-
-		execve(interpreter.c_str(), argv, &envp[0]);
+		char *argv[3] = {NULL, NULL, NULL};
+		if (run_directly)
+		{
+			argv[0] = const_cast<char *>(fs_script.c_str());
+			execve(fs_script.c_str(), argv, &envp[0]);
+		}
+		else
+		{
+			argv[0] = const_cast<char *>(interpreter.c_str());
+			argv[1] = const_cast<char *>(fs_script.c_str());
+			execve(interpreter.c_str(), argv, &envp[0]);
+		}
 		_exit(1);
 	}
 
 	close(in_pipe[0]);
 	close(out_pipe[1]);
 
-	if (!body.empty())
-		send_all(in_pipe[1], body);
+	if (!body.empty() && !write_all(in_pipe[1], body))
+	{
+		close(in_pipe[1]);
+		close(out_pipe[0]);
+		kill(pid, SIGTERM);
+		waitpid(pid, NULL, 0);
+		server.send_error_page(request_data._client_fd, 500, "Internal Server Error", "Failed to write CGI stdin.", request_data._request_id);
+		return true;
+	}
 	close(in_pipe[1]);
 
 	int status = 0;
