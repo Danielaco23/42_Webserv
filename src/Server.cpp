@@ -1,16 +1,30 @@
 #include "../includes/Server.hpp"
-
+/**
+ * @brief Constructs a Server object and initializes its address structure.
+ * 
+ * @param port The port on which the server will listen for incoming connections.
+ */
 Server::Server(int port) : _server_fd(-1), _port(port)
 {
     std::memset(&_address, 0, sizeof(_address));
 }
 
+/**
+ * @brief Destroys the Server object and closes the server socket if open.
+ */
 Server::~Server()
 {
     if (_server_fd != -1)
         close(_server_fd);
 }
 
+/**
+ * @brief Initializes the server socket, binds it to the specified port,
+ * and starts listening for incoming connections.
+ * 
+ * This function sets the socket to non-blocking mode and prepares it
+ * for polling by adding it to the poll file descriptor list.
+ */
 void Server::initSocket()
 {
     _server_fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -53,6 +67,12 @@ void Server::initSocket()
     std::cout << "Server running on port " << _port << std::endl;
 }
 
+/**
+ * @brief Starts the main server loop.
+ * 
+ * This function continuously monitors file descriptors using poll()
+ * and handles incoming connections, client reads, writes, and errors.
+ */
 void Server::run()
 {
     while (true)
@@ -86,6 +106,13 @@ void Server::run()
     }
 }
 
+
+/**
+ * @brief Accepts a new client connection.
+ * 
+ * The new client socket is set to non-blocking mode and added to the poll list.
+ * A corresponding Client object is also created and stored.
+ */
 void Server::acceptClient()
 {
     int client_fd = accept(_server_fd, NULL, NULL);
@@ -107,10 +134,21 @@ void Server::acceptClient()
     std::cout << "New client connected!" << std::endl;
 }
 
+/**
+ * @brief Handles incoming data from a client.
+ * 
+ * @param fd The file descriptor of the client socket.
+ * 
+ * Reads data from the client, stores it in the client's buffer,
+ * and prepares a simple HTTP response. The client's poll event
+ * is then switched to POLLOUT for sending the response.
+ */
+
 void Server::handleClientRead(int fd)
 {
-  // read client
+     // read client
     char buffer[1024];
+
     int bytes_read = recv(fd, buffer, 1023, 0);
 
     if (bytes_read <= 0)
@@ -122,27 +160,45 @@ void Server::handleClientRead(int fd)
     buffer[bytes_read] = '\0';
 
     std::map<int, Client>::iterator it = _clients.find(fd);
+
     if (it == _clients.end())
     {
         std::cout << "Client not found" << std::endl;
         return;
     }
 
+    // MOCK REQUEST TEMPORAL
+    it->second.request.method = "GET";
+    it->second.request.path = "/cgi-bin/test.py";
+    it->second.request.queryString = "";
+    it->second.request.body = "";
+
     it->second.readBuffer += buffer;
 
-    // Send HTTP
+    std::cout << "Request from "
+              << fd
+              << ":\n"
+              << it->second.readBuffer
+              << std::endl;
+
+    // CGI TEST
+    std::string output = CGI::execute(
+        "./cgi-bin/test.py",
+        "/usr/bin/python3",
+        "GET",
+        "",
+        "",
+        std::map<std::string, std::string>()
+    );
+ // Send HTTP
     std::string response =
         "HTTP/1.1 200 OK\r\n"
-        "Content-Type: text/plain\r\n"
-        "Content-Length: 5\r\n"
-        "\r\n"
-        "Hello";
-    
-    std::cout << "Request from " << fd << ":\n" << it->second.readBuffer << std::endl;
+        "Content-Type: text/html\r\n\r\n" +
+        output;
 
     it->second.writeBuffer = response;
-    it->second.state = WRITING;
 
+    it->second.state = WRITING;
     // change event a POLLOUT
     for (size_t i = 0; i < _fds.size(); i++)
     {
@@ -151,6 +207,16 @@ void Server::handleClientRead(int fd)
     }
 }
 
+
+
+/**
+ * @brief Sends data to a client.
+ * 
+ * @param fd The file descriptor of the client socket.
+ * 
+ * Attempts to send the prepared response to the client.
+ * If successful, the client connection is closed.
+ */
 void Server::handleClientWrite(int fd)
 {
     std::map<int, Client>::iterator it = _clients.find(fd);
@@ -169,6 +235,14 @@ void Server::handleClientWrite(int fd)
     removeClient(fd);
 }
 
+/**
+ * @brief Removes a client from the server.
+ * 
+ * @param fd The file descriptor of the client socket.
+ * 
+ * Closes the socket, removes it from the poll list and
+ * deletes its associated Client object.
+ */
 void Server::removeClient(int fd)
 {
     close(fd);

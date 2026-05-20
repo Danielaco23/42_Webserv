@@ -29,6 +29,10 @@ INCLUDES_DIR	=	includes
 
 INCLUDE_FILES	=	Config.hpp\
 					Webserver.hpp\
+					Server.hpp\
+					Client.hpp\
+					CGI.hpp\
+					Request.hpp\
 
 VPATH			=	objects/:\
 					includes/:\
@@ -37,7 +41,11 @@ VPATH			=	objects/:\
 
 CXX_SRC			=	main_server.cpp\
 					Server.cpp \
-					sendWebPage.cpp
+					Client.cpp \
+					sendWebPage.cpp\
+					CGI.cpp\
+
+
 
 CXX_OBJ_DIR		=	objects
 CXX_OBJ			=	$(patsubst %.cpp, $(CXX_OBJ_DIR)/%.o, $(CXX_SRC))
