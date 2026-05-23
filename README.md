@@ -64,3 +64,9 @@ Makefile can't compare with deleted files, and will always mark them as outdated
 - https://www.w3schools.com/cpp/cpp_templates.asp
 
 - So far, as far as dgomez-l's apportations, AI was **not** used in the development of this project.
+
+# Documentation
+
+- Practical guide for HTTP + CGI + uploads:
+	- [docs/GUIA_HTTP_CGI_UPLOADS_PMENDEZ.md](docs/GUIA_HTTP_CGI_UPLOADS_PMENDEZ.md)
+	- [docs/GUIA_CGI_RUTAS_PMENDEZ.md](docs/GUIA_CGI_RUTAS_PMENDEZ.md)

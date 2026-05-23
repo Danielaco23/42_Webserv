@@ -1,10 +1,15 @@
 #include "../includes/Server.hpp"
+#include <signal.h>
 
 int main()
 {
+    // prevent SIGPIPE from killing the process when writing to closed sockets
+    signal(SIGPIPE, SIG_IGN);
+
     Server server(8080);
 
     server.initSocket();
+
     server.run();
 
     return 0;

@@ -2,3 +2,5 @@ objects/
 *.o
 TEST_*
 webserv
+.DS_Store
+webserv-upload.XXXXXX.txt
