@@ -29,6 +29,9 @@ INCLUDES_DIR	=	includes
 
 INCLUDE_FILES	=	Config.hpp\
 					Webserver.hpp\
+					Server.hpp\
+					Client.hpp\
+					HttpRequest.hpp\
 
 VPATH			=	objects/:\
 					includes/:\
@@ -39,14 +42,15 @@ VPATH			=	objects/:\
 CXX_SRC			=	main_server.cpp\
 					Client.cpp \
 					Server.cpp \
-					sendWebPage.cpp \
-					Upload.cpp\
-					showUploads.cpp \
-					handleGet.cpp \
-					handlePost.cpp \
-					handleCgi.cpp \
-					webChecker.cpp \
-					handleRequests.cpp
+					webManager/sendWebPage.cpp\
+					webManager/Upload.cpp\
+					webManager/showUploads.cpp \
+					webManager/handleGet.cpp \
+					webManager/handlePost.cpp \
+					webManager/handleCgi.cpp \
+					webManager/webChecker.cpp \
+					webManager/parse_request.cpp\
+					webManager/handleRequests.cpp
 
 
 CXX_OBJ_DIR		=	objects

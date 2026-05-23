@@ -1,5 +1,8 @@
 #include "Server.hpp"
 
+#include <ios>
+#include <fstream>
+
 /**
  * @brief Validates the HTTP request and sends an appropriate error response if the request is malformed.
  * @param server Reference to the Server instance handling the request.

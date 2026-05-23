@@ -2,6 +2,7 @@
 #define CLIENT_HPP
 
 #include <string>
+#include "HttpRequest.hpp"
 
 enum ClientState
 {
@@ -12,14 +13,19 @@ enum ClientState
 
 class Client
 {
-    public:
-        int     fd;
-        std::string readBuffer;
-        std::string writeBuffer;
-        ClientState state;
+public:
+    int fd;
 
-        Client() : fd(-1), state(READING) {}
-        Client(int fd);
+    std::string readBuffer;
+    std::string writeBuffer;
+
+    ClientState state;
+
+    HttpRequest request;
+
+    Client();
+    Client(int fd);
+    ~Client(); 
 };
 
 #endif

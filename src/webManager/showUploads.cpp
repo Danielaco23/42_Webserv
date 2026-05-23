@@ -1,5 +1,5 @@
 #include "Server.hpp"
-
+/**
 static std::string escape_json(const std::string &input)
 {
 	std::string out;
@@ -14,46 +14,60 @@ static std::string escape_json(const std::string &input)
 		else out += c;
 	}
 	return out;
+}**/
+
+static std::string escape_json(const std::string &input)
+{
+    std::string output;
+
+    for (size_t i = 0; i < input.size(); i++)
+    {
+        if (input[i] == '\"')
+            output += "\\\"";
+        else if (input[i] == '\\')
+            output += "\\\\";
+        else
+            output += input[i];
+    }
+
+    return output;
 }
 
-std::string build_uploads_json(const std::string &www_root)
+std::string build_uploads_json(const std::string &uploads_dir)
 {
-	std::string uploads_dir;
-	if (www_root.empty())
-		uploads_dir = "www/uploads";
-	else
-		uploads_dir = www_root + "/uploads";
-	DIR *dir = opendir(uploads_dir.c_str());
+    DIR *dir = opendir(uploads_dir.c_str());
+    if (!dir)
+        return "{\"error\":\"cannot open directory\"}";
 
-	if (!dir)
-		return "{\"files\":[]}";
+    std::ostringstream json;
+    json << "{ \"files\": [";
 
-	std::ostringstream json;
-	json << "{\"files\":[";
+    struct dirent *entry;
+    bool first = true;
 
-	bool first = true;
-	struct dirent *entry;
-	while ((entry = readdir(dir)) != NULL)
-	{
-		std::string name = entry->d_name;
-		if (name == "." || name == "..")
-			continue;
+    while ((entry = readdir(dir)) != NULL)
+    {
+        std::string name = entry->d_name;
+        if (name == "." || name == "..")
+            continue;
 
-		std::string full_path = uploads_dir + "/" + name;
-		struct stat st;
-		if (stat(full_path.c_str(), &st) != 0 || !S_ISREG(st.st_mode))
-			continue;
+        std::string full_path = uploads_dir + "/" + name;
 
-		if (!first)
-			json << ",";
-		first = false;
+        struct stat st;
+        if (stat(full_path.c_str(), &st) != 0 || !S_ISREG(st.st_mode))
+            continue;
 
-        json << "{\"name\":\"" << escape_json(name) << "\",\"size\":" << st.st_size << ",\"mtime\":" << static_cast<long long>(st.st_mtime) << "}";
-	}
+        if (!first)
+            json << ",";
+        first = false;
 
-	closedir(dir);
-	json << "]}";
-	return json.str();
+        json << "\"" << escape_json(name) << "\"";
+    }
+
+    json << "] }";
+
+    closedir(dir);
+    return json.str();
 }
 
 std::string generateDirectoryListing(std::string path, std::string route) {

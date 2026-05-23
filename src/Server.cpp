@@ -1,140 +1,18 @@
 #include "../includes/Server.hpp"
-#include <limits.h>
-#include <libgen.h>
-#include <unistd.h>
-#include <sys/stat.h>
-#include <fstream>
-#include <fcntl.h>
-#ifdef __APPLE__
-#include <mach-o/dyld.h>
-#endif
+#include "../includes/Client.hpp"
 
-static int hex_to_int(char c)
+
+
+
+// ============================
+// CONSTRUCTOR / DESTRUCTOR
+// ============================
+
+Server::Server(int port)
+    : _server_fd(-1), _port(port)
 {
-	if (c >= '0' && c <= '9')
-		return c - '0';
-	if (c >= 'a' && c <= 'f')
-		return c - 'a' + 10;
-	if (c >= 'A' && c <= 'F')
-		return c - 'A' + 10;
-	return -1;
-}
-
-static std::string url_decode(const std::string &input)
-{
-	std::string out;
-	out.reserve(input.size());
-	for (size_t i = 0; i < input.size(); ++i)
-	{
-		if (input[i] == '%' && i + 2 < input.size())
-		{
-			int hi = hex_to_int(input[i + 1]);
-			int lo = hex_to_int(input[i + 2]);
-			if (hi >= 0 && lo >= 0)
-			{
-				out.push_back(static_cast<char>((hi << 4) | lo));
-				i += 2;
-				continue;
-			}
-		}
-		out.push_back(input[i]);
-	}
-	return out;
-}
-
-static std::string build_request_id()
-{
-	static unsigned long req_counter = 0;
-	++req_counter;
-	std::ostringstream reqid_ss;
-	reqid_ss << "req-" << req_counter;
-	return reqid_ss.str();
-}
-
-static std::string get_executable_dir()
-{
-	char exe_path[PATH_MAX];
-	std::string dir;
-
-#ifdef __APPLE__
-	uint32_t size = sizeof(exe_path);
-	if (_NSGetExecutablePath(exe_path, &size) == 0)
-	{
-		char *dirc = strdup(exe_path);
-		if (dirc != NULL)
-		{
-			char *resolved_dir = dirname(dirc);
-			if (resolved_dir != NULL)
-				dir = resolved_dir;
-			free(dirc);
-		}
-	}
-#else
-	ssize_t len = readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1);
-	if (len != -1)
-	{
-		exe_path[len] = '\0';
-		char *dirc = strdup(exe_path);
-		if (dirc != NULL)
-		{
-			char *resolved_dir = dirname(dirc);
-			if (resolved_dir != NULL)
-				dir = resolved_dir;
-			free(dirc);
-		}
-	}
-#endif
-	if (dir.empty())
-	{
-		char cwd[PATH_MAX];
-		if (getcwd(cwd, sizeof(cwd)) != NULL)
-			dir = cwd;
-	}
-	return dir;
-}
-
-bool parse_request_line(HttpRequest &parsed_request)
-{
-	// Parse only the first HTTP line: METHOD SP PATH SP VERSION CRLF
-	std::istringstream reqstream(parsed_request._req);
-	std::string request_line;
-
-	if (!std::getline(reqstream, request_line))
-		return false;
-	if (!request_line.empty() && request_line[request_line.size() - 1] == '\r')
-		request_line.erase(request_line.size() - 1);
-
-	std::istringstream line_stream(request_line);
-	if (!(line_stream >> parsed_request._method >> parsed_request._path >> parsed_request._version))
-		return false;
-
-	// Reject malformed request lines with extra tokens.
-	std::string extra_token;
-	if (line_stream >> extra_token)
-		return false;
-
-	size_t query_pos = parsed_request._path.find('?');
-	if (query_pos != std::string::npos)
-		parsed_request._path = parsed_request._path.substr(0, query_pos);
-
-	parsed_request._path = url_decode(parsed_request._path);
-
-	return true;
-}
-
-/**
- * @brief Constructs a Server instance.
- * @param port Port number to listen on.
- */
-Server::Server(int port) : _server_fd(-1), _port(port), _number_of_clients(0)
-{
+    _number_of_clients = 0;
     std::memset(&_address, 0, sizeof(_address));
-
-	std::string base_dir = get_executable_dir();
-	if (!base_dir.empty())
-		this->_request_data._www_root = base_dir + "/www";
-
-    initVariables();
 }
 
 Server::~Server()
@@ -143,192 +21,186 @@ Server::~Server()
         close(_server_fd);
 }
 
-/**
- * @brief Initializes the server socket.
-    * Creates a TCP socket, sets SO_REUSEADDR, binds to the specified port and any IP.
- */
+// ============================
+// INIT SOCKET
+// ============================
+
 void Server::initSocket()
 {
     _server_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (_server_fd < 0)
     {
-        perror("socket failed");
+        perror("socket");
         exit(EXIT_FAILURE);
     }
 
     int opt = 1;
-    if (setsockopt(_server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0)
-    {
-        perror("setsockopt failed");
-        exit(EXIT_FAILURE);
-    }
+    setsockopt(_server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
 
     _address.sin_family = AF_INET;
     _address.sin_addr.s_addr = INADDR_ANY;
     _address.sin_port = htons(_port);
 
-    if (bind(_server_fd, (struct sockaddr *)&_address, sizeof(_address)) < 0)
+    if (bind(_server_fd, (struct sockaddr*)&_address, sizeof(_address)) < 0)
     {
-        perror("bind failed");
+        perror("bind");
         exit(EXIT_FAILURE);
     }
-}
 
-void Server::initVariables()
-{
-	this->_number_of_clients = 0;
-	this->_request_data._method = "";
-	this->_request_data._path = "";
-	this->_request_data._version = "";
-	this->_request_data._maxBodySize = 0;
-	this->_request_data._file_path = "";
-	this->_request_data._req = "";
-	this->_request_data._request_id = "";
-}
-
-void Server::startListening()
-{
-	if (listen(_server_fd, 10) < 0)
-	{
-		perror("listen failed");
-		exit(EXIT_FAILURE);
-	}
-	std::cout << "Server listening on port " << _port << std::endl;
-    std::cout << "Try accessing http://localhost:" << _port << " in your browser!" << std::endl << std::endl;
-}
-
-void Server::acceptConnection()
-{
-    struct sockaddr_storage client_addr;
-    socklen_t addrlen = sizeof(client_addr);
-    this->_request_data._client_fd = accept(_server_fd, (struct sockaddr *)&client_addr, &addrlen);
-
-    if (this->_request_data._client_fd < 0)
+    if (listen(_server_fd, 128) < 0)
     {
-        perror("accept failed");
-        return;
+        perror("listen");
+        exit(EXIT_FAILURE);
     }
 
-    this->_request_data._request_id = build_request_id();
-    handleRequest();
+    fcntl(_server_fd, F_SETFL, O_NONBLOCK);
+
+    struct pollfd pfd;
+    pfd.fd = _server_fd;
+    pfd.events = POLLIN;
+    pfd.revents = 0;
+
+    _fds.push_back(pfd);
+
+    std::cout << "Server running on port " << _port << std::endl;
 }
+
+// ============================
+// RUN LOOP
+// ============================
 
 void Server::run()
 {
-    if (fcntl(_server_fd, F_SETFL, O_NONBLOCK) < 0)
-    {
-        perror("fcntl failed");
-        exit(EXIT_FAILURE);
-    }
-
-    if (_fds.empty())
-    {
-        struct pollfd pfd;
-        pfd.fd = _server_fd;
-        pfd.events = POLLIN;
-        pfd.revents = 0;
-        _fds.push_back(pfd);
-    }
-
     while (true)
     {
+        if (_fds.empty())
+            continue;
+
         if (poll(&_fds[0], _fds.size(), -1) < 0)
         {
             perror("poll");
             exit(EXIT_FAILURE);
         }
 
-        for (size_t i = 0; i < _fds.size(); i++)
+        for (std::vector<pollfd>::iterator it = _fds.begin(); it != _fds.end(); )
         {
-            if (_fds[i].revents & POLLIN)
+            int fd = it->fd;
+            short revents = it->revents;
+
+            if (revents & POLLIN)
             {
-                if (_fds[i].fd == _server_fd)
+                if (fd == _server_fd)
+                {
                     acceptClient();
+                    ++it;
+                    continue;
+                }
                 else
-                    handleClientRead(_fds[i].fd);
+                    handleClientRead(fd);
             }
 
-            if (_fds[i].revents & POLLOUT)
+            if (revents & POLLOUT)
             {
-                handleClientWrite(_fds[i].fd);
+                handleClientWrite(fd);
+                it->events = POLLIN;
             }
-            if (_fds[i].revents & (POLLERR | POLLHUP))
+
+            if (revents & (POLLERR | POLLHUP))
             {
-                removeClient(_fds[i].fd);
+                removeClient(fd);
+                it = _fds.begin(); // reinicio seguro
                 continue;
             }
+
+            ++it;
         }
     }
 }
 
+// ============================
+// ACCEPT CLIENT
+// ============================
+
 void Server::acceptClient()
 {
-    int client_fd = accept(_server_fd, NULL, NULL);
-    if (client_fd < 0)
-    {
-        perror("accept failed");
+    int fd = accept(_server_fd, NULL, NULL);
+    if (fd < 0)
         return;
-    }
 
-    if (fcntl(client_fd, F_SETFL, O_NONBLOCK) < 0)
-    {
-        perror("fcntl failed");
-        close(client_fd);
-        return;
-    }
+    fcntl(fd, F_SETFL, O_NONBLOCK);
 
     struct pollfd pfd;
-    pfd.fd = client_fd;
+    pfd.fd = fd;
     pfd.events = POLLIN;
     pfd.revents = 0;
-    _fds.push_back(pfd);
 
-    _clients.insert(std::make_pair(client_fd, Client(client_fd)));
+    _fds.push_back(pfd);
+    _clients.insert(std::make_pair(fd, Client(fd)));
+
+    std::cout << "Client connected: " << fd << std::endl;
 }
+
+// ============================
+// READ CLIENT
+// ============================
 
 void Server::handleClientRead(int fd)
 {
-  // read client
     char buffer[1024];
-    int bytes_read = recv(fd, buffer, 1023, 0);
 
-    if (bytes_read <= 0)
+    int bytes = recv(fd, buffer, 1023, 0);
+
+    if (bytes <= 0)
     {
         removeClient(fd);
         return;
     }
 
-    buffer[bytes_read] = '\0';
+    buffer[bytes] = '\0';
 
     std::map<int, Client>::iterator it = _clients.find(fd);
+
     if (it == _clients.end())
+        return;
+
+    Client &c = it->second;
+
+    c.readBuffer += buffer;
+
+    c.request._req = c.readBuffer;
+    c.request._client_fd = fd;
+
+    // MOCK CGI TEST
+    c.request._method = "GET";
+    c.request._path = "/cgi-bin/test.py";
+    c.request._query_string = "";
+    c.request._body = "";
+
+    if (handle_cgi_request(*this, c.request))
     {
-        std::cout << "Client not found" << std::endl;
         return;
     }
 
-    it->second.readBuffer += buffer;
+    c.writeBuffer =
+        "HTTP/1.1 404 Not Found\r\n"
+        "Content-Type: text/plain\r\n\r\n"
+        "Not a CGI request";
 
-    // Send HTTP
-    std::string response =
-        "HTTP/1.1 200 OK\r\n"
-        "Content-Type: text/plain\r\n"
-        "Content-Length: 5\r\n"
-        "\r\n"
-        "Hello";
-    
-    std::cout << "Request from " << fd << ":\n" << it->second.readBuffer << std::endl;
+    c.state = WRITING;
 
-    it->second.writeBuffer = response;
-    it->second.state = WRITING;
-
-    // change event a POLLOUT
     for (size_t i = 0; i < _fds.size(); i++)
     {
         if (_fds[i].fd == fd)
+        {
             _fds[i].events = POLLOUT;
+            break;
+        }
     }
 }
+
+// ============================
+// WRITE CLIENT
+// ============================
 
 void Server::handleClientWrite(int fd)
 {
@@ -336,9 +208,9 @@ void Server::handleClientWrite(int fd)
     if (it == _clients.end())
         return;
 
-    Client &client = it->second;
+    Client &c = it->second;
 
-    int sent = send(fd,client.writeBuffer.c_str(),client.writeBuffer.size(), 0);
+    ssize_t sent = send(fd, c.writeBuffer.c_str(), c.writeBuffer.size(), 0);
     if (sent <= 0)
     {
         removeClient(fd);
@@ -348,10 +220,17 @@ void Server::handleClientWrite(int fd)
     removeClient(fd);
 }
 
+// ============================
+// REMOVE CLIENT
+// ============================
+
 void Server::removeClient(int fd)
 {
+    std::map<int, Client>::iterator it = _clients.find(fd);
+    if (it != _clients.end())
+        _clients.erase(it);
+
     close(fd);
-    _clients.erase(fd);
 
     for (size_t i = 0; i < _fds.size(); i++)
     {
@@ -363,9 +242,4 @@ void Server::removeClient(int fd)
     }
 
     std::cout << "Client disconnected: " << fd << std::endl;
-}
-
-int Server::getServerFd() const
-{
-    return _server_fd;
 }
