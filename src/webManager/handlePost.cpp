@@ -105,8 +105,10 @@ static std::string extract_boundary(const std::string &headers_part)
         if (lower.find("boundary=") == 0)
         {
             std::string b = trim_copy(token.substr(9));
-            if (!b.empty() && b.front() == '"' && b.back() == '"')
-                b = b.substr(1, b.size() - 2);
+           if (b.size() >= 2 && b[0] == '"' && b[b.size() - 1] == '"')
+			{
+    			b = b.substr(1, b.size() - 2);
+			}
             if (!b.empty())
             {
                 if (b.size() >= 2 && b[0] == '-' && b[1] == '-')
@@ -184,10 +186,15 @@ int save_multipart_files(const std::string &body, const std::string &boundary, c
 
         std::string part = body.substr(part_start, part_end - part_start);
 
-        while (!part.empty() && (part.front() == '\r' || part.front() == '\n'))
-            part.erase(0, 1);
-        while (!part.empty() && (part.back() == '\r' || part.back() == '\n'))
-            part.pop_back();
+       while (!part.empty() && (part[0] == '\r' || part[0] == '\n'))
+	   {
+			part.erase(0, 1);
+		}
+
+		while (!part.empty() && (part[part.size() - 1] == '\r' || part[part.size() - 1] == '\n'))
+		{
+			part.erase(part.size() - 1, 1);
+		}
 
         std::string filename;
         std::string content;

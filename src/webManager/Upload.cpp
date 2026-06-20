@@ -217,10 +217,11 @@ bool extract_multipart_file(
         fn_end = cd.size();
 
     filename = trim_copy(cd.substr(fn_pos, fn_end - fn_pos));
-    if (filename.size() >= 2 && filename.front() == '"' && filename.back() == '"')
+    if (filename.size() >= 2 && filename[0] == '"' && filename[filename.size() - 1] == '"')
+    {
         filename = filename.substr(1, filename.size() - 2);
-
-    return !filename.empty();
+    }
+    return (!filename.empty());
 }
 
 /**
