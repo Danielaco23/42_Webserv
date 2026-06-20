@@ -242,6 +242,25 @@ static void send_cgi_http_response(int client_fd, const std::string &cgi_output)
 	close(client_fd);
 }
 
+static std::string get_header_value(const std::string &headers, const std::string &name)
+{
+	size_t pos = headers.find(name + ":");
+	if (pos == std::string::npos)
+		return "";
+
+	pos += name.size() + 1;
+	while (pos < headers.size() && (headers[pos] == ' ' || headers[pos] == '\t'))
+		++pos;
+
+	size_t end = headers.find("\r\n", pos);
+	if (end == std::string::npos)
+		end = headers.find('\n', pos);
+	if (end == std::string::npos)
+		end = headers.size();
+
+	return headers.substr(pos, end - pos);
+}
+
 bool handle_cgi_request(Server &server, HttpRequest &request_data)
 {
 	(void)server;
