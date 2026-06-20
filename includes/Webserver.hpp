@@ -26,7 +26,6 @@ class Webserver
 	private:
 		Config	_config;
 		int		_server_socket;
-		std::string
 
 	public:
 		Webserver();

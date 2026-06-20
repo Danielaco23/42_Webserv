@@ -1,6 +1,8 @@
 objects/
 *.o
 TEST_*
+test_*
 webserv
+a.out
 .DS_Store
 webserv-upload.XXXXXX.txt

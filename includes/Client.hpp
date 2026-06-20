@@ -1,31 +1,35 @@
+
+#pragma once
+
 #ifndef CLIENT_HPP
-#define CLIENT_HPP
+# define CLIENT_HPP
 
-#include <string>
-#include "HttpRequest.hpp"
+# include <string>
+# include "HttpRequest.hpp"
 
-enum ClientState
+enum	ClientState
 {
-    READING,
-    WRITING,
-    CLOSED
+	READING,
+	WRITING,
+	CLOSED
 };
 
 class Client
 {
-public:
-    int fd;
+	public:
+		int fd;
 
-    std::string readBuffer;
-    std::string writeBuffer;
+		std::string readBuffer;
+		std::string writeBuffer;
 
-    ClientState state;
+		ClientState state;
 
-    HttpRequest request;
+		HttpRequest request;
 
-    Client();
-    Client(int fd);
-    ~Client(); 
+		Client();
+		Client(int fd);
+		~Client();
+
 };
 
 #endif
