@@ -1,22 +1,49 @@
 
 #pragma once
 
-#include <string>	// HTTP petition handler
-#include <vector>	// Client list
-#include <map>		// HTTP headers
+#ifndef Config_HPP
+# define Config_HPP
+
+# include "Webserver.hpp"
+# include <map>
+# include <vector>
+/*class Int_Port
+{
+	private:
+		
+	public:
+
+		Int_Port(void);
+		~Int_Port();
+
+};*/
 
 class Config
 {
 	private:
-		std::string		_file_Path;		// Path of the config file.
 
-		int				_listen_Port;	// Listening port, mandatory.
-		std::string		_host_Ip;		// Host or 127.0.0.1 by default.
-		std::string		_server_Name;
-		int				_error_Code;	// Default error code.
-		std::string		_error_Page;	// Default error page directory.
+		unsigned int					_port;  // REQUIRED.
+		unsigned short					_host;  // REQUIRED.
+		std::string						_root;  // REQUIRED.
+		std::string						_index; // REQUIRED.
+
+		std::string						_server_name;
+		unsigned long					_client_max_body_size;
+		bool							_autoindex;
+		std::map<short, std::string>	_error_pages;
+		std::vector<std::string> 		_locations;
+        std::string						_server_address;
+        int     						_listen_fd;
 
 	public:
-		Config();
+
+		Config(void);
+		Config(Config& original);
+		~Config();
 
 };
+
+Config::Config(){};
+Config::Config(Config& original){};
+Config::~Config(){};
+#endif
