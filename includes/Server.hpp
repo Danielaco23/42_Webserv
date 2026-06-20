@@ -9,6 +9,8 @@
 #include <netinet/in.h>
 #include <poll.h>
 
+#include <signal.h>
+
 #include <iostream>
 #include <vector>
 #include <map>
@@ -43,60 +45,64 @@ class Client; // ❌ también eliminado si ya incluyes Client.hpp (redundante)
  */
 class Server
 {
-private:
-    int _server_fd;
-    int _port;
-    struct sockaddr_in _address;
+    private:
+        int _server_fd;
+        int _port;
+        HttpRequest _request_data;
+        struct sockaddr_in _address;
 
-    std::vector<pollfd> _fds;
-    std::map<int, Client> _clients;
-    
-    void handleRequest();
-    void acceptClient();
-    void handleClientRead(int fd);
-    void handleClientWrite(int fd);
-    void removeClient(int fd);
-    size_t _number_of_clients;
-    void handle_post_upload(...);
-    void handle_uploads_listing(...);
-    void handle_post_upload(int client_fd,
-                        const std::string &path,
-                        const std::string &request_id,
-                        const std::string &request,
-                        const std::string &www_root);
-
-    void handle_uploads_listing(int client_fd,
+        std::vector<pollfd> _fds;
+        std::map<int, Client> _clients;
+        
+        void handleRequest();
+        void acceptClient();
+        void handleClientRead(int fd);
+        void handleClientWrite(int fd);
+        void removeClient(int fd);
+        size_t _number_of_clients;
+        void handle_post_upload(...);
+        void handle_uploads_listing(...);
+        void handle_post_upload(int client_fd,
+                            const std::string &path,
+                            const std::string &request_id,
+                            const std::string &request,
                             const std::string &www_root);
-   
 
-public:
-    Server(int port);
-    ~Server();
+        void handle_uploads_listing(int client_fd,
+                                const std::string &www_root);
+    
 
-    std::string _www_root;
-    void initSocket();
-    void run();
+    public:
+        Server(int port);
+        ~Server();
 
-    void sendWebPage(int client_fd);
+        std::string _www_root;
+        void initSocket();
+        void initVariables();
+        void startListening();
+        void run();
 
-    int getServerFd() const;
+        void sendWebPage(int client_fd);
 
-    void send_file(
-        int client_fd,
-        const std::string &filepath,
-        const std::string &request_id
-    );
+        int getServerFd() const;
 
-    void send_error_page(
-        int client_fd,
-        int status,
-        const std::string &title,
-        const std::string &message,
-        const std::string &request_id
-    );
+        void send_file(
+            int client_fd,
+            const std::string &filepath,
+            const std::string &request_id
+        );
+
+        void send_error_page(
+            int client_fd,
+            int status,
+            const std::string &title,
+            const std::string &message,
+            const std::string &request_id
+        );
 };
 
 bool handle_cgi_request(Server &server, HttpRequest &request_data);
+bool is_cgi_path(const std::string &path);
 
 bool check_response(Server &server, HttpRequest &request_data);
 

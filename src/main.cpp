@@ -1,5 +1,6 @@
 
-#include "Webserver.hpp"
+// #include "Webserver.hpp"
+#include "../includes/Server.hpp"
 
 template <typename T>
 /**
@@ -31,14 +32,24 @@ void	print_cerr(T printable)
  */
 int main(int argc, char const *argv[])
 {
-	Config config;
+	// Config config;
+	
+	(void)argv;
+	(void)argc;
+	signal(SIGPIPE, SIG_IGN);
+	// if (argc != 2)
+	// 	return (print_cerr<std::string>(ARG_ERR), 1);
+	// print_cout<std::string>(argv[1]);
+	
+	Server server(8080);
+    server.initSocket();
+	server.initVariables();
+	server.startListening();
 
-	if (argc != 2)
-		return (print_cerr<std::string>(ARG_ERR), 1);
-	print_cout<std::string>(argv[1]);
+    server.run();
+
+    return (0);
 
 	// TODO: Aquí se debería crear el objeto Config, parsear el archivo de configuración y luego iniciar el servidor con esa configuración.
 	// config.parseConfigFile(argv[1]);
-
-	return (0);
 }

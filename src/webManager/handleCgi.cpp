@@ -73,15 +73,19 @@ static bool parse_cgi_target(const std::string &request, std::string &script_pat
 	return true;
 }
 
-static bool is_cgi_path(const std::string &path)
+bool is_cgi_path(const std::string &path)
 {
 	if (path == "/cgi-bin" || path == "/cgi-bin/")
 		return true;
-	if (path.find("/cgi-bin/") != 0)
-		return false;
 	if (path.find("..") != std::string::npos)
 		return false;
-	return true;
+	if (path.find("/cgi-bin/") == 0)
+		return true;
+	if (path.size() >= 3 && path.compare(path.size() - 3, 3, ".py") == 0)
+		return true;
+	if (path.size() >= 3 && path.compare(path.size() - 3, 3, ".sh") == 0)
+		return true;
+	return false;
 }
 
 static std::string choose_interpreter(const std::string &script_path)

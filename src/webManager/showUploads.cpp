@@ -61,7 +61,7 @@ std::string build_uploads_json(const std::string &uploads_dir)
             json << ",";
         first = false;
 
-        json << "\"" << escape_json(name) << "\"";
+        json << "{\"name\":\"" << escape_json(name) << "\",\"size\":" << st.st_size << "}";
     }
 
     json << "] }";

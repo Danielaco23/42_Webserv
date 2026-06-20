@@ -39,7 +39,7 @@ VPATH			=	objects/:\
 					src/config/:\
 					src/webManager/:\
 
-CXX_SRC			=	main_server.cpp\
+CXX_SRC			=	main.cpp\
 					Client.cpp \
 					Server.cpp \
 					webManager/sendWebPage.cpp\

@@ -12,7 +12,13 @@ std::string build_uploads_json(const std::string &uploads_dir);
  */
 void Server::handle_uploads_listing(int client_fd, const std::string &www_root)
 {
-    std::string body = build_uploads_json(www_root);
+    std::string uploads_dir;
+    if (www_root.empty())
+        uploads_dir = "www/uploads";
+    else
+        uploads_dir = www_root + "/uploads";
+
+    std::string body = build_uploads_json(uploads_dir);
 
     std::ostringstream headers;
 

@@ -56,10 +56,18 @@ static bool resolve_requested_path(HttpRequest &request_data)
 	if (normalized_path.find("..") != std::string::npos)
         return (false);
 
+	std::string base_path;
 	if (request_data._www_root.empty())
-		request_data._file_path = std::string("www") + normalized_path;
+		base_path = "www";
 	else
-		request_data._file_path = request_data._www_root + normalized_path;
+		base_path = request_data._www_root;
+
+	request_data._file_path = base_path + normalized_path;
+	struct stat st;
+	if (stat(request_data._file_path.c_str(), &st) == 0 && S_ISDIR(st.st_mode))
+		request_data._file_path += "/index.html";
+	else if (stat(request_data._file_path.c_str(), &st) != 0 && normalized_path.find('.') == std::string::npos)
+		request_data._file_path = base_path + normalized_path + "/index.html";
     return (true);
 }
 
@@ -137,12 +145,7 @@ void Server::handleRequest()
             continue;
         }
 
-        const bool is_cgi_route =
-            (req._path == "/cgi-bin" ||
-             req._path == "/cgi-bin/" ||
-             req._path.compare(0, 9, "/cgi-bin/") == 0);
-
-        if (is_cgi_route)
+        if (is_cgi_path(req._path))
         {
             if (!handle_cgi_request(*this, req))
                 send_error_page(req._client_fd, 500,

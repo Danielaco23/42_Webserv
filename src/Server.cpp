@@ -22,6 +22,25 @@ Server::~Server()
 }
 
 // ============================
+// INIT VARIABLES
+// ============================
+
+void Server::initVariables()
+{
+    this->_number_of_clients = 0;
+    this->_request_data._method = "";
+    this->_request_data._file_path = "";
+    this->_request_data._req = "";
+    this->_request_data._request_id = "";
+    this->_request_data._path = "";
+    this->_request_data._version = "";
+    this->_request_data._query_string = "";
+    this->_request_data._body = "";
+    this->_request_data._www_root = "";
+    this->_request_data._client_fd = -1;
+}
+
+// ============================
 // INIT SOCKET
 // ============================
 
@@ -35,7 +54,11 @@ void Server::initSocket()
     }
 
     int opt = 1;
-    setsockopt(_server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+    if (setsockopt(_server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0)
+    {
+        perror("setsockopt failed");
+        exit(EXIT_FAILURE);
+    }
 
     _address.sin_family = AF_INET;
     _address.sin_addr.s_addr = INADDR_ANY;
@@ -43,10 +66,16 @@ void Server::initSocket()
 
     if (bind(_server_fd, (struct sockaddr*)&_address, sizeof(_address)) < 0)
     {
-        perror("bind");
+        perror("bind failed");
         exit(EXIT_FAILURE);
     }
+}
 
+// ============================
+// START LISTENING
+// ============================
+void Server::startListening()
+{
     if (listen(_server_fd, 128) < 0)
     {
         perror("listen");
@@ -63,6 +92,7 @@ void Server::initSocket()
     _fds.push_back(pfd);
 
     std::cout << "Server running on port " << _port << std::endl;
+    std::cout << "Try accessing http://localhost:" << _port << " in your browser." << std::endl;
 }
 
 // ============================
@@ -170,32 +200,93 @@ void Server::handleClientRead(int fd)
     c.request._req = c.readBuffer;
     c.request._client_fd = fd;
 
-    // MOCK CGI TEST
-    c.request._method = "GET";
-    c.request._path = "/cgi-bin/test.py";
-    c.request._query_string = "";
-    c.request._body = "";
-
-    if (handle_cgi_request(*this, c.request))
+    if (!check_response(*this, c.request))
     {
+        removeClient(fd);
         return;
     }
 
-    c.writeBuffer =
-        "HTTP/1.1 404 Not Found\r\n"
-        "Content-Type: text/plain\r\n\r\n"
-        "Not a CGI request";
-
-    c.state = WRITING;
-
-    for (size_t i = 0; i < _fds.size(); i++)
+    if (!parse_request_line(c.request))
     {
-        if (_fds[i].fd == fd)
-        {
-            _fds[i].events = POLLOUT;
-            break;
-        }
+        send_error_page(fd, 400, "Bad Request", "Malformed request line.", c.request._request_id);
+        removeClient(fd);
+        return;
     }
+
+    if (is_cgi_path(c.request._path))
+    {
+        if (!handle_cgi_request(*this, c.request))
+            send_error_page(fd, 500, "Internal Server Error", "CGI handler failed.", c.request._request_id);
+        removeClient(fd);
+        return;
+    }
+
+    if (c.request._method == "POST")
+    {
+        this->handle_post_upload(fd, c.request._path, c.request._request_id, c.request._req, c.request._www_root);
+        removeClient(fd);
+        return;
+    }
+
+    if (c.request._method == "DELETE")
+    {
+        std::string fullPath =
+            c.request._www_root.empty()
+                ? std::string("www") + c.request._path
+                : c.request._www_root + c.request._path;
+
+        if (std::remove(fullPath.c_str()) == 0)
+            send_error_page(fd, 204, "No Content", "", c.request._request_id);
+        else
+            send_error_page(fd, 404, "Not Found", "File not found.", c.request._request_id);
+
+        removeClient(fd);
+        return;
+    }
+
+    if (c.request._method != "GET" && c.request._method != "HEAD")
+    {
+        send_error_page(fd, 405, "Method Not Allowed", "Only GET, POST and DELETE supported.", c.request._request_id);
+        removeClient(fd);
+        return;
+    }
+
+    if (c.request._path == "/uploads")
+    {
+        this->handle_uploads_listing(fd, c.request._www_root);
+        removeClient(fd);
+        return;
+    }
+
+    std::string normalized_path;
+    if (c.request._path == "/")
+        normalized_path = "/index.html";
+    else
+        normalized_path = c.request._path;
+
+    if (normalized_path.find("..") != std::string::npos)
+    {
+        send_error_page(fd, 400, "Bad Request", "Invalid path.", c.request._request_id);
+        removeClient(fd);
+        return;
+    }
+
+    std::string base_path;
+    if (c.request._www_root.empty())
+        base_path = "www";
+    else
+        base_path = c.request._www_root;
+
+    c.request._file_path = base_path + normalized_path;
+
+    struct stat st;
+    if (stat(c.request._file_path.c_str(), &st) == 0 && S_ISDIR(st.st_mode))
+        c.request._file_path += "/index.html";
+    else if (stat(c.request._file_path.c_str(), &st) != 0 && normalized_path.find('.') == std::string::npos)
+        c.request._file_path = base_path + normalized_path + "/index.html";
+
+    send_file(fd, c.request._file_path, c.request._request_id);
+    removeClient(fd);
 }
 
 // ============================
@@ -230,7 +321,8 @@ void Server::removeClient(int fd)
     if (it != _clients.end())
         _clients.erase(it);
 
-    close(fd);
+    if (fcntl(fd, F_GETFD) != -1)
+        close(fd);
 
     for (size_t i = 0; i < _fds.size(); i++)
     {
