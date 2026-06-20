@@ -56,10 +56,18 @@ static bool resolve_requested_path(HttpRequest &request_data)
 	if (normalized_path.find("..") != std::string::npos)
         return (false);
 
+	std::string base_path;
 	if (request_data._www_root.empty())
-		request_data._file_path = std::string("www") + normalized_path;
+		base_path = "www";
 	else
-		request_data._file_path = request_data._www_root + normalized_path;
+		base_path = request_data._www_root;
+
+	request_data._file_path = base_path + normalized_path;
+	struct stat st;
+	if (stat(request_data._file_path.c_str(), &st) == 0 && S_ISDIR(st.st_mode))
+		request_data._file_path += "/index.html";
+	else if (stat(request_data._file_path.c_str(), &st) != 0 && normalized_path.find('.') == std::string::npos)
+		request_data._file_path = base_path + normalized_path + "/index.html";
     return (true);
 }
 
@@ -112,91 +120,86 @@ static bool receive_request(int client_fd, const std::string &request_id, std::s
 
 void Server::handleRequest()
 {
-	if (!receive_request(this->_request_data._client_fd, this->_request_data._request_id, this->_request_data._req))
+    for (std::map<int, Client>::iterator it = _clients.begin(); it != _clients.end(); ++it)
     {
-        send_error_page(this->_request_data._client_fd, 400, "Bad Request", "Failed to receive request data.", this->_request_data._request_id);
-        return;
+        HttpRequest &req = it->second.request;
+
+        if (!receive_request(req._client_fd, req._request_id, req._req))
+        {
+            send_error_page(req._client_fd, 400, "Bad Request",
+                "Failed to receive request data.", req._request_id);
+            continue;
+        }
+
+        if (!check_response(*this, req))
+        {
+            send_error_page(req._client_fd, 400, "Bad Request",
+                "Malformed request.", req._request_id);
+            continue;
+        }
+
+        if (!parse_request_line(req))
+        {
+            send_error_page(req._client_fd, 400, "Bad Request",
+                "Malformed request line.", req._request_id);
+            continue;
+        }
+
+        if (is_cgi_path(req._path))
+        {
+            if (!handle_cgi_request(*this, req))
+                send_error_page(req._client_fd, 500,
+                    "Internal Server Error",
+                    "CGI handler failed.",
+                    req._request_id);
+            continue;
+        }
+
+        if (req._method == "POST")
+        {
+            this->handle_post_upload(req._client_fd, req._path,
+                req._request_id, req._req, req._www_root);
+            continue;
+        }
+
+        if (req._method == "DELETE")
+        {
+            std::string fullPath =
+                req._www_root.empty()
+                    ? std::string("www") + req._path
+                    : req._www_root + req._path;
+
+            if (std::remove(fullPath.c_str()) == 0)
+                send_error_page(req._client_fd, 204, "No Content", "", req._request_id);
+            else
+                send_error_page(req._client_fd, 404, "Not Found",
+                    "File not found.", req._request_id);
+
+            continue;
+        }
+
+        if (req._method != "GET" && req._method != "HEAD")
+        {
+            send_error_page(req._client_fd, 405,
+                "Method Not Allowed",
+                "Only GET, POST and DELETE supported.",
+                req._request_id);
+            continue;
+        }
+
+        if (req._path == "/uploads")
+        {
+            this->handle_uploads_listing(req._client_fd, req._www_root);
+            continue;
+        }
+
+        if (!resolve_requested_path(req))
+        {
+            send_error_page(req._client_fd, 400,
+                "Bad Request", "Invalid path.", req._request_id);
+            continue;
+        }
+
+        send_file(req._client_fd, req._file_path, req._request_id);
     }
-    if (!check_response(*this, this->_request_data))
-    {
-        send_error_page(this->_request_data._client_fd, 400, "Bad Request", "Malformed request.", this->_request_data._request_id);
-        return;
-    }
-
-	if (!parse_request_line(this->_request_data))
-    {
-        send_error_page(this->_request_data._client_fd, 400, "Bad Request", "Malformed request line.", this->_request_data._request_id);
-        return ;
-    }
-
-	// Delegate only /cgi-bin and /cgi-bin/* to CGI. All other routes use native handlers.
-	const bool is_cgi_route = (
-		this->_request_data._path == "/cgi-bin"
-		|| this->_request_data._path == "/cgi-bin/"
-		|| this->_request_data._path.compare(0, 9, "/cgi-bin/") == 0
-	);
-	if (is_cgi_route)
-	{
-		if (!handle_cgi_request(*this, this->_request_data))
-			send_error_page(this->_request_data._client_fd, 500, "Internal Server Error", "CGI handler failed.", this->_request_data._request_id);
-		return;
-	}
-
-	if (this->_request_data._method == "POST")
-	{
-		handle_post_upload(this->_request_data._client_fd, this->_request_data._path, this->_request_data._request_id, this->_request_data._req, this->_request_data._www_root);
-		return;
-	}
-	else if (this->_request_data._method  == "DELETE")
-	{
-		std::string fullPath;
-		if (this->_request_data._www_root.empty())
-			fullPath = std::string("www") + this->_request_data._path;
-		else
-			fullPath = this->_request_data._www_root + this->_request_data._path;
-
-		if (std::remove(fullPath.c_str()) == 0) {
-			send_error_page(this->_request_data._client_fd, 204, "No Content", "", this->_request_data._request_id);
-			return;
-		} else {
-			send_error_page(this->_request_data._client_fd, 404, "Not Found", "File not found.", this->_request_data._request_id);
-			return;
-		}
-	}
-	else if (this->_request_data._method != "GET" && this->_request_data._method != "HEAD")
-	{
-		std::cerr << "Unsupported method: " << this->_request_data._method << " (" << this->_request_data._request_id << ")" << std::endl;
-		send_error_page(this->_request_data._client_fd, 405, "Method Not Allowed", "Only GET, POST and DELETE are supported.", this->_request_data._request_id);
-		return ;
-	}
-	else if (this->_request_data._path == "/uploads")
-	{
-		handle_uploads_listing(this->_request_data._client_fd, this->_request_data._www_root);
-		return ;
-	}
-	else if (this->_request_data._path == "/showUploads")
-	{
-		std::string show_uploads_path;
-		if (this->_request_data._www_root.empty())
-			show_uploads_path = "www/showUploads/index.html";
-		else
-			show_uploads_path = this->_request_data._www_root + "/showUploads/index.html";
-		send_file(this->_request_data._client_fd, show_uploads_path, this->_request_data._request_id);
-		return ;
-	}
-
-	if (!resolve_requested_path(this->_request_data))
-    {
-        send_error_page(this->_request_data._client_fd, 400, "Bad Request", "Invalid path.", this->_request_data._request_id);
-        return;
-    }
-
-    if (this->_request_data._file_path.find("index.html") != std::string::npos)
-    {
-        ++_number_of_clients;
-        std::cout << GREEN << "Number of clients: " << _number_of_clients << NC << std::endl;
-    }
-
-	std::cout << "The web asks for " << this->_request_data._path << " in reality, it is -> " << this->_request_data._file_path << " (" << this->_request_data._request_id << ")" << std::endl;
-    send_file(this->_request_data._client_fd, this->_request_data._file_path, this->_request_data._request_id);
 }

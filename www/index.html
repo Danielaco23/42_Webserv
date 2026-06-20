@@ -96,7 +96,7 @@
   <div class="wrap">
     <div class="card">
   <h1>Upload files</h1>
-  <p class="lead">Drag & drop files or use the button. Supports multiple files and shows progress.</p>
+  <p class="lead">Drag & drop files or use the button. Supports multiple files of any type and shows progress.</p>
 
   <div class="features" aria-hidden="false">
     <div class="feature">
@@ -123,8 +123,8 @@
               <strong>Drag files here</strong>
               <div class="muted">or</div>
               <button type="button" id="pickBtn" class="btn">Select files</button>
-              <input id="fileInput" name="files" type="file" multiple>
-              <div class="small">Server must accept POST /upload with multipart/form-data.</div>
+              <input id="fileInput" name="files" type="file" multiple accept="*/*">
+              <div class="small">Server accepts POST /upload with multipart/form-data for any file type.</div>
             </label>
 
             <div style="margin-top:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
@@ -139,7 +139,7 @@
 
 
           <div id="messages" style="margin-top:12px"></div>
-          <div class="hint">Tip: You can drag multiple files at once. Large files will be rejected if they exceed 50MB.</div>
+          <div class="hint">Tip: You can drag multiple files at once. Large files will be rejected if they exceed 50MB, and any file type is allowed.</div>
         </div>
 
         <aside class="card meta" aria-labelledby="uploadListTitle">
@@ -339,7 +339,6 @@
   sendBtn.addEventListener('click', uploadAll);
   loadUploadedFiles();
 
-  // keyboard / accessibility: Enter on dropzone triggers file picker
   dropzone.addEventListener('keydown', (e)=>{ if (e.key === 'Enter' || e.key === ' ') { fileInput.click(); e.preventDefault(); }})
 })();
 </script>

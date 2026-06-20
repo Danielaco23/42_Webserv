@@ -1,4 +1,5 @@
 
+
 #pragma once
 
 /*
@@ -12,6 +13,8 @@
 
 #include "Config.hpp"
 #include <iostream>
+#include <sstream>
+#include <fstream>
 
 #define ARG_ERR "Wrong number of arguments.\nThe correct usage of this program is \"./webserv [config file]\".\nThis argument is not optional."
 
@@ -23,7 +26,6 @@ class Webserver
 	private:
 		Config	_config;
 		int		_server_socket;
-		std::string
 
 	public:
 		Webserver();

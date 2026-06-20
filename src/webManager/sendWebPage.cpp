@@ -3,6 +3,9 @@
 #include <limits.h>
 #include <algorithm>
 #include <cctype>
+#include <sstream>
+#include <fstream>
+
 
 /**
  * @brief Sends a buffer to a socket file descriptor until all bytes are written.
@@ -172,33 +175,36 @@ static void add_not_found_suggestions(std::string &html)
  */
 void Server::send_file(int client_fd, const std::string &filepath, const std::string &request_id)
 {
-	std::ifstream file(filepath.c_str(), std::ios::in | std::ios::binary);
-	if (!file)
-	{
-		std::ostringstream why;
-		why << "Could not open " << filepath << " (errno=" << errno << ") " << strerror(errno);
-		std::cerr << why.str() << " (" << request_id << ")\n";
-		char cwd[PATH_MAX];
-		if (getcwd(cwd, sizeof(cwd)) != NULL)
-			std::cerr << "CWD: " << cwd << "\n";
-		send_error_page(client_fd, 404, "Not Found", "The requested resource was not found.", request_id);
-		return ;
-	}
+    std::map<int, Client>::iterator it = this->_clients.find(client_fd);
+    if (it == this->_clients.end())
+        return;
 
-	std::string body = read_stream(file);
-	std::string mime = get_mime_type(filepath);
-	std::string headers = build_headers(200, "OK", mime, body.size());
-
-	sendAll(client_fd, headers);
-
-	if (this->_request_data._method == "HEAD")
+    std::ifstream file(filepath.c_str(), std::ios::in | std::ios::binary);
+    if (!file)
     {
-		close(client_fd);
-		return ;
-	}	
+        std::ostringstream why;
+        why << "Could not open " << filepath << " (errno=" << errno << ") " << strerror(errno);
+        std::cerr << why.str() << " (" << request_id << ")\n";
 
-	sendAll(client_fd, body);
-	close(client_fd);
+        send_error_page(client_fd, 404, "Not Found", "The requested resource was not found.", request_id);
+        return;
+    }
+
+    std::string body = read_stream(file);
+    std::string mime = get_mime_type(filepath);
+    std::string headers = build_headers(200, "OK", mime, body.size());
+
+    // HEAD handling CORRECTO
+    if (it->second.request._method == "HEAD")
+    {
+        sendAll(client_fd, headers);
+        close(client_fd);
+        return;
+    }
+
+    sendAll(client_fd, headers);
+    sendAll(client_fd, body);
+    close(client_fd);
 }
 
 /**
@@ -211,46 +217,60 @@ void Server::send_file(int client_fd, const std::string &filepath, const std::st
  */
 void Server::send_error_page(int client_fd, int status, const std::string &title, const std::string &message, const std::string &request_id)
 {
-	std::string tpl_path;
-	if (this->_request_data._www_root.empty())
-		tpl_path = "www/errors/template.html";
-	else
-		tpl_path = this->_request_data._www_root + std::string("/errors/template.html");
-	std::ifstream tpl(tpl_path.c_str());
-	if (!tpl)
+    std::map<int, Client>::iterator it = this->_clients.find(client_fd);
+    if (it == this->_clients.end())
+        return;
+
+    std::string tpl_path;
+
+	if (this->_www_root.empty())
 	{
-		std::ostringstream fallback;
-		fallback << "HTTP/1.1 " << status << " " << title << "\r\n"
-				 << "Content-Type: text/plain; charset=UTF-8\r\n"
-				 << "Content-Length: " << message.size() + 50 << "\r\n"
-				 << "Connection: close\r\n\r\n"
-				 << "Error " << status << " - " << title << "\n" << message << "\n" << "Request id: " << request_id;
-		std::string out = fallback.str();
-		sendAll(client_fd, out);
-		close(client_fd);
-		return;
+    	tpl_path = this->_www_root + "/errors/template.html";
 	}
+    else
+        tpl_path = this->_www_root + "/errors/template.html";
 
-	std::string html = read_stream(tpl);
-	std::string status_str = int_to_string(status);
+    std::ifstream tpl(tpl_path.c_str());
+    if (!tpl)
+    {
+        std::ostringstream fallback;
+        fallback << "HTTP/1.1 " << status << " " << title << "\r\n"
+                 << "Content-Type: text/plain; charset=UTF-8\r\n"
+                 << "Content-Length: " << message.size() + 50 << "\r\n"
+                 << "Connection: close\r\n\r\n"
+                 << "Error " << status << " - " << title << "\n"
+                 << message << "\n"
+                 << "Request id: " << request_id;
 
-	replace_all(html, "{{status}}", status_str);
-	replace_all(html, "{{title}}", title);
-	replace_all(html, "{{message}}", message);
-	replace_all(html, "{{request_id}}", request_id);
+        std::string out = fallback.str();
+        sendAll(client_fd, out);
+        close(client_fd);
+        return;
+    }
 
-	std::string icon;
-	std::string visual_class;
-	set_error_visual(status, icon, visual_class);
-	replace_all(html, "{{icon}}", icon);
-	replace_all(html, "{{visual_class}}", visual_class);
-	replace_all(html, "{{favicon}}", icon);
+    std::string html = read_stream(tpl);
+    std::string status_str = int_to_string(status);
 
-	if (status == 404)
-		add_not_found_suggestions(html);
+    replace_all(html, "{{status}}", status_str);
+    replace_all(html, "{{title}}", title);
+    replace_all(html, "{{message}}", message);
+    replace_all(html, "{{request_id}}", request_id);
 
-	std::string header_str = build_headers(status, title, "text/html; charset=UTF-8", html.size());
-	sendAll(client_fd, header_str);
-	sendAll(client_fd, html);
-	close(client_fd);
+    std::string icon;
+    std::string visual_class;
+
+    set_error_visual(status, icon, visual_class);
+
+    replace_all(html, "{{icon}}", icon);
+    replace_all(html, "{{visual_class}}", visual_class);
+    replace_all(html, "{{favicon}}", icon);
+
+    if (status == 404)
+        add_not_found_suggestions(html);
+
+    std::string header_str = build_headers(status, title, "text/html; charset=UTF-8", html.size());
+
+    sendAll(client_fd, header_str);
+    sendAll(client_fd, html);
+    close(client_fd);
 }

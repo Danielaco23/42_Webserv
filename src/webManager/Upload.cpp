@@ -2,6 +2,54 @@
 #include <fstream>
 #include <sys/stat.h>
 #include <cctype>
+#include <cerrno>
+
+static std::string to_lower_copy(const std::string &value)
+{
+    std::string lowered = value;
+    for (size_t i = 0; i < lowered.size(); ++i)
+        lowered[i] = static_cast<char>(std::tolower(static_cast<unsigned char>(lowered[i])));
+    return lowered;
+}
+
+static std::string trim_copy(const std::string &value)
+{
+    size_t start = 0;
+    while (start < value.size() && (value[start] == ' ' || value[start] == '\t' || value[start] == '\r' || value[start] == '\n'))
+        ++start;
+
+    size_t end = value.size();
+    while (end > start && (value[end - 1] == ' ' || value[end - 1] == '\t' || value[end - 1] == '\r' || value[end - 1] == '\n'))
+        --end;
+
+    return value.substr(start, end - start);
+}
+
+static bool extract_header_value(const std::string &headers_part, const std::string &name, std::string &value)
+{
+    std::string lower_headers = to_lower_copy(headers_part);
+    std::string lower_name = to_lower_copy(name);
+    size_t header_pos = lower_headers.find(lower_name + ":");
+    if (header_pos == std::string::npos)
+        return false;
+
+    size_t colon_pos = headers_part.find(':', header_pos);
+    if (colon_pos == std::string::npos)
+        return false;
+
+    size_t start = colon_pos + 1;
+    while (start < headers_part.size() && (headers_part[start] == ' ' || headers_part[start] == '\t'))
+        ++start;
+
+    size_t end = headers_part.find("\r\n", start);
+    if (end == std::string::npos)
+        end = headers_part.find("\n", start);
+    if (end == std::string::npos)
+        end = headers_part.size();
+
+    value = trim_copy(headers_part.substr(start, end - start));
+    return !value.empty();
+}
 
 static std::string basename_from_upload_name(const std::string &name)
 {
@@ -73,7 +121,13 @@ std::string read_request_body(int client_fd, size_t content_length)
 		if (remaining < chunk_size)
 			to_read = remaining;
 		ssize_t n = recv(client_fd, buffer, to_read, 0);
-		if (n <= 0)
+		if (n < 0)
+		{
+			if (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK)
+				break;
+			break;
+		}
+		if (n == 0)
 			break;
 		body.append(buffer, n);
 		remaining -= n;
@@ -126,43 +180,47 @@ bool save_uploaded_file(const std::string &www_root, const std::string &filename
  * @param content Output file content.
  * @return true if successfully extracted, false otherwise.
  */
-bool extract_multipart_file(const std::string &part, std::string &filename, std::string &content)
+bool extract_multipart_file(
+    const std::string &part,
+    std::string &filename,
+    std::string &content
+)
 {
-	// Find Content-Disposition header to extract filename
-	size_t disp_pos = part.find("Content-Disposition:");
-	if (disp_pos == std::string::npos)
-		return false;
-	
-	size_t filename_pos = part.find("filename=\"", disp_pos);
-	if (filename_pos == std::string::npos)
-		return false;
-	
-	filename_pos += 10;
-	size_t filename_end = part.find("\"", filename_pos);
-	if (filename_end == std::string::npos)
-		return false;
-	
-	filename = part.substr(filename_pos, filename_end - filename_pos);
-	
-	// Find the blank line separating headers from content
-	size_t body_start = part.find("\r\n\r\n", disp_pos);
-	if (body_start == std::string::npos)
-		body_start = part.find("\n\n", disp_pos);
-	else
-		body_start += 4;
-	
-	if (body_start == std::string::npos)
-		return false;
-	
-	// Content ends at the last CRLF before the boundary
-	size_t body_end = part.rfind("\r\n");
-	if (body_end == std::string::npos)
-		body_end = part.rfind("\n");
-	if (body_end == std::string::npos)
-		body_end = part.size();
-	
-	content = part.substr(body_start, body_end - body_start);
-	return true;
+    filename.clear();
+    content.clear();
+
+    size_t sep = part.find("\r\n\r\n");
+    if (sep == std::string::npos)
+        return false;
+
+    std::string headers = part.substr(0, sep);
+    content = part.substr(sep + 4);
+
+    std::string cd;
+    if (!extract_header_value(headers, "Content-Disposition", cd))
+        return false;
+
+    std::string lower_cd = to_lower_copy(cd);
+    if (lower_cd.find("form-data") == std::string::npos)
+        return false;
+
+    size_t fn_pos = lower_cd.find("filename=");
+    if (fn_pos == std::string::npos)
+        return false;
+
+    fn_pos += 9;
+    while (fn_pos < cd.size() && (cd[fn_pos] == ' ' || cd[fn_pos] == '\t'))
+        ++fn_pos;
+
+    size_t fn_end = cd.find(';', fn_pos);
+    if (fn_end == std::string::npos)
+        fn_end = cd.size();
+
+    filename = trim_copy(cd.substr(fn_pos, fn_end - fn_pos));
+    if (filename.size() >= 2 && filename.front() == '"' && filename.back() == '"')
+        filename = filename.substr(1, filename.size() - 2);
+
+    return !filename.empty();
 }
 
 /**
@@ -190,6 +248,7 @@ int process_uploads(const std::string &body, const std::string &boundary, const 
 		std::string filename, content;
 		if (extract_multipart_file(part, filename, content))
 		{
+			std::cout << "Processing uploaded file: " << filename << " (" << content.size() << " bytes)" << std::endl;
 			if (save_uploaded_file(www_root, filename, content))
 				++count;
 		}
