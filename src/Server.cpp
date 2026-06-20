@@ -2,9 +2,6 @@
 #include "../includes/Client.hpp"
 #include <cerrno>
 
-
-
-
 // ============================
 // CONSTRUCTOR / DESTRUCTOR
 // ============================
@@ -93,7 +90,7 @@ void Server::startListening()
 
     _fds.push_back(pfd);
 
-    std::cout << "Server running on port " << _port << std::endl;
+    std::cout << "Server running on port " << this->_port << std::endl;
     std::cout << "Try accessing http://localhost:" << _port << " in your browser." << std::endl;
 }
 
@@ -113,39 +110,43 @@ void Server::run()
             perror("poll");
             exit(EXIT_FAILURE);
         }
-
-        for (std::vector<pollfd>::iterator it = _fds.begin(); it != _fds.end(); )
+        
+        for (size_t i = 0; i < _fds.size(); i++)
         {
-            int fd = it->fd;
-            short revents = it->revents;
+            int fd = _fds[i].fd;
+            short revents = _fds[i].revents;
+
+            if (revents == 0)
+                continue;
 
             if (revents & POLLIN)
             {
                 if (fd == _server_fd)
-                {
                     acceptClient();
-                    ++it;
-                    continue;
-                }
                 else
                     handleClientRead(fd);
             }
 
             if (revents & POLLOUT)
-            {
                 handleClientWrite(fd);
-                it->events = POLLIN;
-            }
 
-            if (revents & (POLLERR | POLLHUP))
-            {
-                removeClient(fd);
-                it = _fds.begin(); // reinicio seguro
-                continue;
-            }
-
-            ++it;
+            if (revents & (POLLERR | POLLHUP | POLLNVAL))
+                _pending_remove.push_back(fd);
         }
+
+        // APPLY NEW CLIENTS
+    
+        for (size_t i = 0; i < _pending_add.size(); i++)
+            _fds.push_back(_pending_add[i]);
+
+        _pending_add.clear();
+
+        // REMOVE CLIENTS
+
+        for (size_t i = 0; i < _pending_remove.size(); i++)
+            removeClient(_pending_remove[i]);
+
+        _pending_remove.clear();
     }
 }
 
@@ -166,7 +167,7 @@ void Server::acceptClient()
     pfd.events = POLLIN;
     pfd.revents = 0;
 
-    _fds.push_back(pfd);
+    _pending_add.push_back(pfd);
     _clients.insert(std::make_pair(fd, Client(fd)));
 
     std::cout << "Client connected: " << fd << std::endl;
@@ -248,7 +249,7 @@ void Server::handleClientRead(int fd)
     {
         if (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK)
             return;
-        removeClient(fd);
+       _pending_remove.push_back(fd);
         return;
     }
 
@@ -275,14 +276,14 @@ void Server::handleClientRead(int fd)
 
     if (!check_response(*this, c.request))
     {
-        removeClient(fd);
+        _pending_remove.push_back(fd);
         return;
     }
 
     if (!parse_request_line(c.request))
     {
         send_error_page(fd, 400, "Bad Request", "Malformed request line.", c.request._request_id);
-        removeClient(fd);
+        _pending_remove.push_back(fd);
         return;
     }
 
@@ -290,14 +291,14 @@ void Server::handleClientRead(int fd)
     {
         if (!handle_cgi_request(*this, c.request))
             send_error_page(fd, 500, "Internal Server Error", "CGI handler failed.", c.request._request_id);
-        removeClient(fd);
+        _pending_remove.push_back(fd);
         return;
     }
 
     if (c.request._method == "POST")
     {
         this->handle_post_upload(fd, c.request._path, c.request._request_id, c.request._req, c.request._www_root);
-        removeClient(fd);
+        _pending_remove.push_back(fd);
         return;
     }
 
@@ -313,21 +314,21 @@ void Server::handleClientRead(int fd)
         else
             send_error_page(fd, 404, "Not Found", "File not found.", c.request._request_id);
 
-        removeClient(fd);
+        _pending_remove.push_back(fd);
         return;
     }
 
     if (c.request._method != "GET" && c.request._method != "HEAD")
     {
         send_error_page(fd, 405, "Method Not Allowed", "Only GET, POST and DELETE supported.", c.request._request_id);
-        removeClient(fd);
+        _pending_remove.push_back(fd);
         return;
     }
 
     if (c.request._path == "/uploads")
     {
         this->handle_uploads_listing(fd, c.request._www_root);
-        removeClient(fd);
+        _pending_remove.push_back(fd);
         return;
     }
 
@@ -340,7 +341,7 @@ void Server::handleClientRead(int fd)
     if (normalized_path.find("..") != std::string::npos)
     {
         send_error_page(fd, 400, "Bad Request", "Invalid path.", c.request._request_id);
-        removeClient(fd);
+        _pending_remove.push_back(fd);
         return;
     }
 
@@ -359,7 +360,7 @@ void Server::handleClientRead(int fd)
         c.request._file_path = base_path + normalized_path + "/index.html";
 
     send_file(fd, c.request._file_path, c.request._request_id);
-    removeClient(fd);
+    _pending_remove.push_back(fd);
 }
 
 // ============================
@@ -377,11 +378,11 @@ void Server::handleClientWrite(int fd)
     ssize_t sent = send(fd, c.writeBuffer.c_str(), c.writeBuffer.size(), 0);
     if (sent <= 0)
     {
-        removeClient(fd);
+        _pending_remove.push_back(fd);
         return;
     }
 
-    removeClient(fd);
+    _pending_remove.push_back(fd);
 }
 
 // ============================
@@ -394,8 +395,7 @@ void Server::removeClient(int fd)
     if (it != _clients.end())
         _clients.erase(it);
 
-    if (fcntl(fd, F_GETFD) != -1)
-        close(fd);
+    close(fd);
 
     for (size_t i = 0; i < _fds.size(); i++)
     {

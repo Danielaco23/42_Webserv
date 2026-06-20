@@ -50,6 +50,10 @@ class Server
 
         std::vector<pollfd> _fds;
         std::map<int, Client> _clients;
+
+        // nuevos vectores para manejar clientes pendientes de agregar y eliminar
+        std::vector<pollfd> _pending_add;
+        std::vector<int> _pending_remove;
         
         void handleRequest();
         void acceptClient();
