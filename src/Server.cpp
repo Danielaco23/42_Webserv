@@ -1,5 +1,6 @@
 #include "../includes/Server.hpp"
 #include "../includes/Client.hpp"
+#include <cerrno>
 
 
 
@@ -38,6 +39,7 @@ void Server::initVariables()
     this->_request_data._body = "";
     this->_request_data._www_root = "";
     this->_request_data._client_fd = -1;
+    this->_request_data._maxBodySize = 50 * 1024 * 1024;
 }
 
 // ============================
@@ -174,19 +176,87 @@ void Server::acceptClient()
 // READ CLIENT
 // ============================
 
+static size_t find_headers_end(const std::string &request)
+{
+    size_t pos = request.find("\r\n\r\n");
+    if (pos != std::string::npos)
+        return pos + 4;
+    pos = request.find("\n\n");
+    if (pos != std::string::npos)
+        return pos + 2;
+    return std::string::npos;
+}
+
+static std::string to_lower_copy(const std::string &value)
+{
+    std::string lowered = value;
+    for (size_t i = 0; i < lowered.size(); ++i)
+        lowered[i] = static_cast<char>(std::tolower(static_cast<unsigned char>(lowered[i])));
+    return lowered;
+}
+
+static size_t extract_content_length(const std::string &request)
+{
+    size_t headers_end = find_headers_end(request);
+    if (headers_end == std::string::npos)
+        return 0;
+
+    std::string headers = request.substr(0, headers_end);
+    std::string lower_headers = to_lower_copy(headers);
+    std::string header_name = "content-length:";
+    size_t pos = lower_headers.find(header_name);
+    if (pos == std::string::npos)
+        return 0;
+
+    pos += header_name.size();
+    while (pos < headers.size() && (headers[pos] == ' ' || headers[pos] == '\t'))
+        ++pos;
+
+    size_t end = pos;
+    while (end < headers.size() && std::isdigit(headers[end]))
+        ++end;
+
+    if (end == pos)
+        return 0;
+
+    std::istringstream iss(headers.substr(pos, end - pos));
+    size_t content_length = 0;
+    iss >> content_length;
+    return content_length;
+}
+
+static bool request_is_complete(const std::string &request)
+{
+    size_t headers_end = find_headers_end(request);
+    if (headers_end == std::string::npos)
+        return false;
+
+    size_t content_length = extract_content_length(request);
+    if (content_length == 0)
+        return true;
+
+    return request.size() >= headers_end + content_length;
+}
+
 void Server::handleClientRead(int fd)
 {
     char buffer[1024];
 
     int bytes = recv(fd, buffer, 1023, 0);
 
-    if (bytes <= 0)
+    if (bytes < 0)
     {
+        if (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK)
+            return;
         removeClient(fd);
         return;
     }
 
-    buffer[bytes] = '\0';
+    if (bytes == 0)
+    {
+        removeClient(fd);
+        return;
+    }
 
     std::map<int, Client>::iterator it = _clients.find(fd);
 
@@ -195,10 +265,13 @@ void Server::handleClientRead(int fd)
 
     Client &c = it->second;
 
-    c.readBuffer += buffer;
+    c.readBuffer.append(buffer, bytes);
 
     c.request._req = c.readBuffer;
     c.request._client_fd = fd;
+
+    if (!request_is_complete(c.readBuffer))
+        return;
 
     if (!check_response(*this, c.request))
     {
