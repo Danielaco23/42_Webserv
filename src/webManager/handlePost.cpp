@@ -1,35 +1,6 @@
-#include "Server.hpp"
-
-#include <sstream>
-#include <iostream>
-#include <string>
-#include <unistd.h>
-
-// ===== External function declarations =====
-
-bool extract_multipart_file(
-	const std::string &part,
-	std::string &filename,
-	std::string &content
-);
-
-bool save_uploaded_file(
-	const std::string &www_root,
-	const std::string &filename,
-	const std::string &content
-);
-
-std::string read_request_body(
-	int client_fd,
-	size_t remaining
-);
-
-// ===== Constants =====
-
-static const size_t kMaxUploadBodyBytes = 50 * 1024 * 1024;
+#include "../includes/Server.hpp"
 
 // ===== Responses =====
-
 static void respond_upload_success(int client_fd)
 {
 	std::string response =
@@ -72,48 +43,92 @@ static void respond_text_error(
 
 // ===== Multipart parsing =====
 
+static std::string to_lower_copy(const std::string &value)
+{
+	std::string lowered = value;
+	for (size_t i = 0; i < lowered.size(); ++i)
+		lowered[i] = static_cast<char>(std::tolower(static_cast<unsigned char>(lowered[i])));
+	return lowered;
+}
+
+static std::string trim_copy(const std::string &value)
+{
+	size_t start = 0;
+	while (start < value.size() && (value[start] == ' ' || value[start] == '\t' || value[start] == '\r' || value[start] == '\n'))
+		++start;
+
+	size_t end = value.size();
+	while (end > start && (value[end - 1] == ' ' || value[end - 1] == '\t' || value[end - 1] == '\r' || value[end - 1] == '\n'))
+		--end;
+
+	return value.substr(start, end - start);
+}
+
+static bool extract_header_value(const std::string &headers_part, const std::string &name, std::string &value)
+{
+	std::string lower_headers = to_lower_copy(headers_part);
+	std::string lower_name = to_lower_copy(name);
+	size_t header_pos = lower_headers.find(lower_name + ":");
+	if (header_pos == std::string::npos)
+		return false;
+
+	size_t colon_pos = headers_part.find(':', header_pos);
+	if (colon_pos == std::string::npos)
+		return false;
+
+	size_t start = colon_pos + 1;
+	while (start < headers_part.size() && (headers_part[start] == ' ' || headers_part[start] == '\t'))
+		++start;
+
+	size_t end = headers_part.find("\r\n", start);
+	if (end == std::string::npos)
+		end = headers_part.find("\n", start);
+	if (end == std::string::npos)
+		end = headers_part.size();
+
+	value = trim_copy(headers_part.substr(start, end - start));
+	return !value.empty();
+}
+
 static std::string extract_boundary(const std::string &headers_part)
 {
-	size_t ct_pos = headers_part.find("Content-Type: multipart/form-data");
+    std::string content_type;
+    if (!extract_header_value(headers_part, "Content-Type", content_type))
+        return "";
 
-	if (ct_pos == std::string::npos)
-		return "";
-
-	size_t bound_pos = headers_part.find("boundary=", ct_pos);
-
-	if (bound_pos == std::string::npos)
-		return "";
-
-	bound_pos += 9;
-
-	size_t bound_end = headers_part.find("\r\n", bound_pos);
-
-	if (bound_end == std::string::npos)
-		bound_end = headers_part.find("\n", bound_pos);
-
-	return "--" + headers_part.substr(bound_pos, bound_end - bound_pos);
+    std::istringstream ss(content_type);
+    std::string token;
+    while (std::getline(ss, token, ';'))
+    {
+        token = trim_copy(token);
+        std::string lower = to_lower_copy(token);
+        if (lower.find("boundary=") == 0)
+        {
+            std::string b = trim_copy(token.substr(9));
+           if (b.size() >= 2 && b[0] == '"' && b[b.size() - 1] == '"')
+			{
+    			b = b.substr(1, b.size() - 2);
+			}
+            if (!b.empty())
+            {
+                if (b.size() >= 2 && b[0] == '-' && b[1] == '-')
+                    return b;
+                return "--" + b;
+            }
+        }
+    }
+    return "";
 }
 
 static size_t extract_content_length(const std::string &headers_part)
 {
-	size_t clen_pos = headers_part.find("Content-Length:");
-
-	if (clen_pos == std::string::npos)
+	std::string len_str;
+	if (!extract_header_value(headers_part, "Content-Length", len_str))
 		return 0;
-
-	size_t start = clen_pos + 15;
-
-	size_t end = headers_part.find("\r\n", start);
-
-	if (end == std::string::npos)
-		end = headers_part.find("\n", start);
-
-	std::string len_str = headers_part.substr(start, end - start);
 
 	std::istringstream iss(len_str);
 
 	size_t value = 0;
-
 	iss >> value;
 
 	return value;
@@ -144,44 +159,59 @@ static bool split_headers_and_body(
 }
 
 // ===== Save uploaded files =====
-
-static int save_multipart_files(
-	const std::string &body,
-	const std::string &boundary,
-	const std::string &www_root
-)
+int save_multipart_files(const std::string &body, const std::string &boundary, const std::string &www_root)
 {
-	int saved_files = 0;
+    int saved_files = 0;
+    if (boundary.empty())
+        return 0;
 
-	size_t part_start = body.find(boundary);
+    std::string marker = boundary;
+    size_t part_start = body.find(marker);
+    if (part_start == std::string::npos)
+        return 0;
 
-	while (part_start != std::string::npos)
-	{
-		part_start += boundary.size();
+    while (part_start != std::string::npos)
+    {
+        part_start += marker.size();
 
-		size_t part_end = body.find(boundary, part_start);
+        if (body.compare(part_start, 2, "--") == 0)
+            break;
 
-		if (part_end == std::string::npos)
-			break;
+        if (body.compare(part_start, 2, "\r\n") == 0)
+            part_start += 2;
 
-		std::string part = body.substr(
-			part_start,
-			part_end - part_start
-		);
+        size_t part_end = body.find(marker, part_start);
+        if (part_end == std::string::npos)
+            break;
 
-		std::string filename;
-		std::string content;
+        std::string part = body.substr(part_start, part_end - part_start);
 
-		if (extract_multipart_file(part, filename, content))
-		{
-			if (save_uploaded_file(www_root, filename, content))
-				++saved_files;
+       while (!part.empty() && (part[0] == '\r' || part[0] == '\n'))
+	   {
+			part.erase(0, 1);
 		}
 
-		part_start = part_end;
-	}
+		while (!part.empty() && (part[part.size() - 1] == '\r' || part[part.size() - 1] == '\n'))
+		{
+			part.erase(part.size() - 1, 1);
+		}
 
-	return saved_files;
+        std::string filename;
+        std::string content;
+
+        std::cout << "!!!!Processing multipart part of size: " << part.size() << std::endl;
+
+        if (extract_multipart_file(part, filename, content))
+        {
+            std::cout << "Saving uploaded file: " << filename << " (" << content.size() << " bytes)" << std::endl;
+            if (save_uploaded_file(www_root, filename, content))
+                ++saved_files;
+        }
+
+        part_start = part_end;
+    }
+
+    return saved_files;
 }
 
 // ===== Main POST upload handler =====
@@ -231,7 +261,7 @@ void Server::handle_post_upload(
 		return;
 	}
 
-	if (content_length > kMaxUploadBodyBytes)
+	if (content_length > this->_request_data._maxBodySize)
 	{
 		respond_text_error(
 			client_fd,
@@ -252,10 +282,22 @@ void Server::handle_post_upload(
 		);
 	}
 
+	if (body.size() < content_length)
+	{
+		respond_text_error(
+			client_fd,
+			400,
+			"Bad Request",
+			"Incomplete request body."
+		);
+		return;
+	}
+
 	if (body.size() > content_length)
 		body.erase(content_length);
 
 	std::string boundary = extract_boundary(headers_part);
+	std::cerr << "boundary='" << boundary << "' body_size=" << body.size() << " content_length=" << content_length << std::endl;
 
 	if (boundary.empty())
 	{

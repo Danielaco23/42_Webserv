@@ -36,9 +36,6 @@
 
 #include "Client.hpp"
 
-// ❌ REMOVIDO HttpRequest (debe ir en su propio header)
-
-class Client; // ❌ también eliminado si ya incluyes Client.hpp (redundante)
 
 /**
  * @brief Simple HTTP server using non-blocking sockets and poll()
@@ -53,6 +50,10 @@ class Server
 
         std::vector<pollfd> _fds;
         std::map<int, Client> _clients;
+
+        // nuevos vectores para manejar clientes pendientes de agregar y eliminar
+        std::vector<pollfd> _pending_add;
+        std::vector<int> _pending_remove;
         
         void handleRequest();
         void acceptClient();
@@ -70,7 +71,10 @@ class Server
 
         void handle_uploads_listing(int client_fd,
                                 const std::string &www_root);
-    
+
+        // bool receive_request(int client_fd,
+        //                     const std::string &request_id,
+        //                     std::string &request);
 
     public:
         Server(int port);
@@ -103,11 +107,10 @@ class Server
 
 bool handle_cgi_request(Server &server, HttpRequest &request_data);
 bool is_cgi_path(const std::string &path);
-
 bool check_response(Server &server, HttpRequest &request_data);
-
 bool parse_request_line(HttpRequest &request_data);
-
-
+bool save_uploaded_file(const std::string &www_root, const std::string &filename, const std::string &content);
+bool extract_multipart_file(const std::string &part, std::string &filename, std::string &content);
+std::string read_request_body(int client_fd, size_t content_length);
 
 #endif
