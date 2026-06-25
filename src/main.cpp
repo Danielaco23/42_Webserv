@@ -2,6 +2,8 @@
 // #include "Webserver.hpp"
 #include "../includes/Server.hpp"
 
+
+
 template <typename T>
 /**
  * @brief This function prints a given string to the standard output
@@ -36,7 +38,9 @@ int main(int argc, char const *argv[])
 	
 	(void)argv;
 	(void)argc;
-	signal(SIGPIPE, SIG_IGN);
+	signal(SIGINT, signalHandler);
+	signal(SIGTERM, signalHandler);
+	signal(SIGQUIT, signalHandler);
 	// if (argc != 2)
 	// 	return (print_cerr<std::string>(ARG_ERR), 1);
 	// print_cout<std::string>(argv[1]);

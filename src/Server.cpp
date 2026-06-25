@@ -1,6 +1,9 @@
 #include "../includes/Server.hpp"
 #include "../includes/Client.hpp"
+#include <csignal>
 #include <cerrno>
+
+volatile sig_atomic_t g_running = 1;
 
 // ============================
 // CONSTRUCTOR / DESTRUCTOR
@@ -15,9 +18,39 @@ Server::Server(int port)
 
 Server::~Server()
 {
-    if (_server_fd != -1)
-        close(_server_fd);
+    //  Por los signals 
+   // if (_server_fd != -1)
+   //     close(_server_fd);
 }
+
+// ============================
+// SIGNALS
+// ============================
+
+void signalHandler(int signal)
+{
+    (void)signal;
+    g_running = 0;
+}
+
+void Server::shutdownServer()
+{
+    for (size_t i = 0; i < _fds.size(); i++)
+    {
+        if (_fds[i].fd >= 0)
+            close(_fds[i].fd);
+    }
+
+    _fds.clear();
+    _clients.clear();
+
+    if (_server_fd != -1)
+    {
+        close(_server_fd);
+        _server_fd = -1;
+    }
+}
+
 
 // ============================
 // INIT VARIABLES
@@ -100,54 +133,59 @@ void Server::startListening()
 
 void Server::run()
 {
-    while (true)
+        while (g_running)
     {
-        if (_fds.empty())
-            continue;
-
-        if (poll(&_fds[0], _fds.size(), -1) < 0)
         {
-            perror("poll");
-            exit(EXIT_FAILURE);
-        }
-        
-        for (size_t i = 0; i < _fds.size(); i++)
-        {
-            int fd = _fds[i].fd;
-            short revents = _fds[i].revents;
-
-            if (revents == 0)
+            if (_fds.empty())
                 continue;
 
-            if (revents & POLLIN)
+            if (poll(&_fds[0], _fds.size(), -1) < 0)
             {
-                if (fd == _server_fd)
-                    acceptClient();
-                else
-                    handleClientRead(fd);
+                if (errno == EINTR)
+                    continue;
+                perror("poll");
+                break;
+            }
+            for (size_t i = 0; i < _fds.size(); i++)
+            {
+                int fd = _fds[i].fd;
+                short revents = _fds[i].revents;
+
+                if (revents == 0)
+                    continue;
+
+                if (revents & POLLIN)
+                {
+                    if (fd == _server_fd)
+                        acceptClient();
+                    else
+                        handleClientRead(fd);
+                }
+
+                if (revents & POLLOUT)
+                    handleClientWrite(fd);
+
+                if (revents & (POLLERR | POLLHUP | POLLNVAL))
+                    _pending_remove.push_back(fd);
             }
 
-            if (revents & POLLOUT)
-                handleClientWrite(fd);
+            // APPLY NEW CLIENTS
+        
+            for (size_t i = 0; i < _pending_add.size(); i++)
+                _fds.push_back(_pending_add[i]);
 
-            if (revents & (POLLERR | POLLHUP | POLLNVAL))
-                _pending_remove.push_back(fd);
+            _pending_add.clear();
+
+            // REMOVE CLIENTS
+
+            for (size_t i = 0; i < _pending_remove.size(); i++)
+                removeClient(_pending_remove[i]);
+
+            _pending_remove.clear();
         }
-
-        // APPLY NEW CLIENTS
-    
-        for (size_t i = 0; i < _pending_add.size(); i++)
-            _fds.push_back(_pending_add[i]);
-
-        _pending_add.clear();
-
-        // REMOVE CLIENTS
-
-        for (size_t i = 0; i < _pending_remove.size(); i++)
-            removeClient(_pending_remove[i]);
-
-        _pending_remove.clear();
     }
+    shutdownServer();
+    std::cout << "Server stopped cleanly." << std::endl;
 }
 
 // ============================
@@ -159,14 +197,11 @@ void Server::acceptClient()
     int fd = accept(_server_fd, NULL, NULL);
     if (fd < 0)
         return;
-
     fcntl(fd, F_SETFL, O_NONBLOCK);
-
     struct pollfd pfd;
     pfd.fd = fd;
     pfd.events = POLLIN;
     pfd.revents = 0;
-
     _pending_add.push_back(pfd);
     _clients.insert(std::make_pair(fd, Client(fd)));
 

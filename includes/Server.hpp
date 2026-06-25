@@ -37,6 +37,8 @@
 #include "Client.hpp"
 
 
+extern volatile sig_atomic_t g_running;
+
 /**
  * @brief Simple HTTP server using non-blocking sockets and poll()
  */
@@ -103,8 +105,10 @@ class Server
             const std::string &message,
             const std::string &request_id
         );
+        void shutdownServer();//signal
 };
 
+void signalHandler(int signal);
 bool handle_cgi_request(Server &server, HttpRequest &request_data);
 bool is_cgi_path(const std::string &path);
 bool check_response(Server &server, HttpRequest &request_data);
