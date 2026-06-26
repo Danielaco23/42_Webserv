@@ -8,7 +8,7 @@
 class Location
 {
 	private:
-		std::string					_path;
+		/* std::string					_path;
 		std::string					_root;
 		bool						_autoindex;
 		std::string					_index;
@@ -17,7 +17,7 @@ class Location
 		std::string					_alias;
 		std::vector<std::string>	_cgi_path;
 		std::vector<std::string>	_cgi_ext;
-		unsigned long				_client_max_body_size;
+		unsigned long				_client_max_body_size; */
 	public:
 		Location(void);
 		~Location();

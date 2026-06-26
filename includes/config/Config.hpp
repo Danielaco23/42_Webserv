@@ -8,6 +8,7 @@
 # include <map>
 # include <vector>
 # include "Webserver.hpp"
+# include "Location.hpp"
 
 /*class Int_Port
 {
@@ -18,23 +19,35 @@
 		~Int_Port();
 };*/
 
+#define DFLT_NAME "Server"
+#define DFLT_MAX_BODY_SIZE 1024
+#define DFLT_AUTOINDEX false
+#define DFLT_ERRPAGE_NUM 404
+#define DFLT_ERRPAGE_ADD "/www/errors/404.html"
+#define DFLT_ADDRESS ""
+
 class Config
 {
 	private:
-
-		unsigned int					_port;		// REQUIRED.
-		unsigned short					_host[4];	// REQUIRED.
+		bool							_is_real;
+		int								_port;		// REQUIRED.
+		short							_host[4];	// REQUIRED.
 		std::string						_root;		// REQUIRED.
 		std::string						_index;		// REQUIRED.
 
 		std::string						_server_name;
-		unsigned long					_client_max_body_size;
+		size_t							_client_max_body_size;
 		bool							_autoindex;
 		std::map<short, std::string>	_error_pages;
-		std::vector<std::string> 		_locations;
+		std::vector<Location> 			_locations;
         std::string						_server_address;
         int								_listen_fd;
 
+		void		parse_port(std::string &cntnt);
+		void		parse_host(std::string &cntnt);
+		void		parse_root(std::string &cntnt);
+		void		parse_indx(std::string &cntnt);
+		void		parse_optional(std::string &cntnt);
 	public:
 		Config(void);
 		Config(std::string config_file);
