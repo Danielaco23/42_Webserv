@@ -217,115 +217,114 @@ int save_multipart_files(const std::string &body, const std::string &boundary, c
 // ===== Main POST upload handler =====
 
 void Server::handle_post_upload(
-	int client_fd,
-	const std::string &path,
-	const std::string &request_id,
-	const std::string &request,
-	const std::string &www_root
+    int client_fd,
+    const std::string &path,
+    const std::string &request_id,
+    const std::string &request,
+    const std::string &www_root,
+    size_t max_body_size
 )
 {
-	std::cout << "POST "
-			  << path
-			  << " ("
-			  << request_id
-			  << ")"
-			  << std::endl;
+    std::cout << "POST "
+              << path
+              << " ("
+              << request_id
+              << ")"
+              << std::endl;
 
-	std::string headers_part;
-	std::string buffered_body;
+    std::string headers_part;
+    std::string buffered_body;
 
-	if (!split_headers_and_body(request, headers_part, buffered_body))
-	{
-		respond_text_error(
-			client_fd,
-			400,
-			"Bad Request",
-			"Malformed request"
-		);
-		return;
-	}
+    if (!split_headers_and_body(request, headers_part, buffered_body))
+    {
+        respond_text_error(
+            client_fd,
+            400,
+            "Bad Request",
+            "Malformed request"
+        );
+        return;
+    }
 
-	size_t content_length = extract_content_length(headers_part);
+    size_t content_length = extract_content_length(headers_part);
 
-	if (
-		content_length == 0
-		&& headers_part.find("Content-Length:") == std::string::npos
-	)
-	{
-		respond_text_error(
-			client_fd,
-			411,
-			"Length Required",
-			"Content-Length header required"
-		);
-		return;
-	}
+    if (content_length == 0
+        && headers_part.find("Content-Length:") == std::string::npos)
+    {
+        respond_text_error(
+            client_fd,
+            411,
+            "Length Required",
+            "Content-Length header required"
+        );
+        return;
+    }
 
-	if (content_length > this->_request_data._maxBodySize)
-	{
-		respond_text_error(
-			client_fd,
-			413,
-			"Payload Too Large",
-			"Payload too large.\n"
-		);
-		return;
-	}
+    if (content_length > max_body_size)
+    {
+        respond_text_error(
+            client_fd,
+            413,
+            "Payload Too Large",
+            "Payload too large."
+        );
+        return;
+    }
 
-	std::string body = buffered_body;
+    std::string body = buffered_body;
 
-	if (body.size() < content_length)
-	{
-		body += read_request_body(
-			client_fd,
-			content_length - body.size()
-		);
-	}
 
-	if (body.size() < content_length)
-	{
-		respond_text_error(
-			client_fd,
-			400,
-			"Bad Request",
-			"Incomplete request body."
-		);
-		return;
-	}
+    if (body.size() < content_length)
+    {
+        respond_text_error(
+            client_fd,
+            400,
+            "Bad Request",
+            "Incomplete request body."
+        );
+        return;
+    }
 
-	if (body.size() > content_length)
-		body.erase(content_length);
+    if (body.size() > content_length)
+        body.erase(content_length);
 
-	std::string boundary = extract_boundary(headers_part);
-	std::cerr << "boundary='" << boundary << "' body_size=" << body.size() << " content_length=" << content_length << std::endl;
+    std::string boundary = extract_boundary(headers_part);
 
-	if (boundary.empty())
-	{
-		respond_text_error(
-			client_fd,
-			400,
-			"Bad Request",
-			"Invalid multipart form request."
-		);
-		return;
-	}
+    std::cerr << "boundary='"
+              << boundary
+              << "' body_size="
+              << body.size()
+              << " content_length="
+              << content_length
+              << std::endl;
 
-	int saved_files = save_multipart_files(
-		body,
-		boundary,
-		www_root
-	);
+    if (boundary.empty())
+    {
+        respond_text_error(
+            client_fd,
+            400,
+            "Bad Request",
+            "Invalid multipart form request."
+        );
+        return;
+    }
 
-	if (saved_files <= 0)
-	{
-		respond_text_error(
-			client_fd,
-			400,
-			"Bad Request",
-			"No valid files found in upload."
-		);
-		return;
-	}
+    int saved_files = save_multipart_files(
+        body,
+        boundary,
+        www_root
+    );
 
-	respond_upload_success(client_fd);
+    if (saved_files <= 0)
+    {
+        respond_text_error(
+            client_fd,
+            400,
+            "Bad Request",
+            "No valid files found in upload."
+        );
+        return;
+    }
+
+    respond_upload_success(client_fd);
 }

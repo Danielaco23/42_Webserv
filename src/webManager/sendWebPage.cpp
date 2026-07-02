@@ -215,36 +215,55 @@ void Server::send_file(int client_fd, const std::string &filepath, const std::st
  * @param message Detailed error message shown to the client.
  * @param request_id Identifier used for logging and tracing the request.
  */
-void Server::send_error_page(int client_fd, int status, const std::string &title, const std::string &message, const std::string &request_id)
+void Server::send_error_page(int client_fd,
+                             int status,
+                             const std::string &title,
+                             const std::string &message,
+                             const std::string &request_id)
 {
-    std::map<int, Client>::iterator it = this->_clients.find(client_fd);
-    if (it == this->_clients.end())
+    std::map<int, Client>::iterator it = _clients.find(client_fd);
+    if (it == _clients.end())
         return;
 
-    std::string tpl_path;
+    int server_index = it->second.server_index;
 
-	if (this->_www_root.empty())
-	{
-    	tpl_path = this->_www_root + "/errors/template.html";
-	}
-    else
-        tpl_path = this->_www_root + "/errors/template.html";
+    if (server_index < 0
+        || server_index >= (int)_servers.size())
+    {
+        std::cerr << "Invalid server index for client "
+                  << client_fd << std::endl;
+        return;
+    }
+
+    const ServerConfig &cfg = _servers[server_index].config;
+    std::string tpl_path = cfg.root + "/errors/template.html";
 
     std::ifstream tpl(tpl_path.c_str());
+
     if (!tpl)
     {
         std::ostringstream fallback;
-        fallback << "HTTP/1.1 " << status << " " << title << "\r\n"
-                 << "Content-Type: text/plain; charset=UTF-8\r\n"
-                 << "Content-Length: " << message.size() + 50 << "\r\n"
-                 << "Connection: close\r\n\r\n"
-                 << "Error " << status << " - " << title << "\n"
-                 << message << "\n"
-                 << "Request id: " << request_id;
 
-        std::string out = fallback.str();
-        sendAll(client_fd, out);
-        close(client_fd);
+        fallback << "HTTP/1.1 "
+                 << status
+                 << " "
+                 << title
+                 << "\r\n";
+
+        fallback << "Content-Type: text/plain; charset=UTF-8\r\n";
+        fallback << "Connection: close\r\n\r\n";
+
+        fallback << "Error "
+                 << status
+                 << " - "
+                 << title
+                 << "\n";
+
+        fallback << message << "\n";
+        fallback << "Request id: "
+                 << request_id;
+
+        sendAll(client_fd, fallback.str());
         return;
     }
 
@@ -268,9 +287,13 @@ void Server::send_error_page(int client_fd, int status, const std::string &title
     if (status == 404)
         add_not_found_suggestions(html);
 
-    std::string header_str = build_headers(status, title, "text/html; charset=UTF-8", html.size());
+    std::string headers =
+        build_headers(
+            status,
+            title,
+            "text/html; charset=UTF-8",
+            html.size());
 
-    sendAll(client_fd, header_str);
+    sendAll(client_fd, headers);
     sendAll(client_fd, html);
-    close(client_fd);
 }

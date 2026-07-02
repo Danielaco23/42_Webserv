@@ -9,11 +9,15 @@ volatile sig_atomic_t g_running = 1;
 // CONSTRUCTOR / DESTRUCTOR
 // ============================
 
-Server::Server(int port)
-    : _server_fd(-1), _port(port)
+Server::Server(const std::vector<ServerConfig> &configs)
 {
-    _number_of_clients = 0;
-    std::memset(&_address, 0, sizeof(_address));
+    for (size_t i = 0; i < configs.size(); i++)
+    {
+        ListeningSocket ls;
+        ls.config = configs[i];
+        ls.fd = -1;
+        _servers.push_back(ls);
+    }
 }
 
 Server::~Server()
@@ -44,18 +48,17 @@ void Server::shutdownServer()
     _fds.clear();
     _clients.clear();
 
-    if (_server_fd != -1)
+    for (size_t i = 0; i < _servers.size(); i++)
     {
-        close(_server_fd);
-        _server_fd = -1;
+        if (_servers[i].fd != -1)
+            close(_servers[i].fd);
     }
 }
-
 
 // ============================
 // INIT VARIABLES
 // ============================
-
+/*
 void Server::initVariables()
 {
     this->_number_of_clients = 0;
@@ -70,6 +73,11 @@ void Server::initVariables()
     this->_request_data._www_root = "";
     this->_request_data._client_fd = -1;
     this->_request_data._maxBodySize = 50 * 1024 * 1024;
+}*/
+
+void Server::initVariables()
+{
+    _number_of_clients = 0;
 }
 
 // ============================
@@ -78,53 +86,69 @@ void Server::initVariables()
 
 void Server::initSocket()
 {
-    _server_fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (_server_fd < 0)
+    for (size_t i = 0; i < _servers.size(); i++)
     {
-        perror("socket");
-        exit(EXIT_FAILURE);
-    }
+        int fd = socket(AF_INET, SOCK_STREAM, 0);
+        if (fd < 0)
+        {
+            perror("socket");
+            exit(EXIT_FAILURE);
+        }
 
-    int opt = 1;
-    if (setsockopt(_server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0)
-    {
-        perror("setsockopt failed");
-        exit(EXIT_FAILURE);
-    }
+        int opt = 1;
+        setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
 
-    _address.sin_family = AF_INET;
-    _address.sin_addr.s_addr = INADDR_ANY;
-    _address.sin_port = htons(_port);
+        ServerConfig &cfg = _servers[i].config;
 
-    if (bind(_server_fd, (struct sockaddr*)&_address, sizeof(_address)) < 0)
-    {
-        perror("bind failed");
-        exit(EXIT_FAILURE);
+        sockaddr_in addr;
+        std::memset(&addr, 0, sizeof(addr));
+
+        addr.sin_family = AF_INET;
+        addr.sin_port = htons(cfg.port);
+        addr.sin_addr.s_addr = inet_addr(cfg.host.c_str());
+
+        if (bind(fd, (sockaddr*)&addr, sizeof(addr)) < 0)
+        {
+            perror("bind");
+            exit(EXIT_FAILURE);
+        }
+
+        if (listen(fd, 128) < 0)
+        {
+            perror("listen");
+            exit(EXIT_FAILURE);
+        }
+
+        fcntl(fd, F_SETFL, O_NONBLOCK);
+
+        _servers[i].fd = fd;
+
+        pollfd pfd;
+        pfd.fd = fd;
+        pfd.events = POLLIN;
+        pfd.revents = 0;
+
+        _fds.push_back(pfd);
     }
 }
 
 // ============================
 // START LISTENING
 // ============================
+
 void Server::startListening()
 {
-    if (listen(_server_fd, 128) < 0)
+    for (size_t i = 0; i < _servers.size(); i++)
     {
-        perror("listen");
-        exit(EXIT_FAILURE);
+        std::cout
+            << "Server "
+            << i
+            << " running on http://"
+            << _servers[i].config.host
+            << ":"
+            << _servers[i].config.port
+            << std::endl;
     }
-
-    fcntl(_server_fd, F_SETFL, O_NONBLOCK);
-
-    struct pollfd pfd;
-    pfd.fd = _server_fd;
-    pfd.events = POLLIN;
-    pfd.revents = 0;
-
-    _fds.push_back(pfd);
-
-    std::cout << "Server running on port " << this->_port << std::endl;
-    std::cout << "Try accessing http://localhost:" << _port << " in your browser." << std::endl;
 }
 
 // ============================
@@ -133,79 +157,113 @@ void Server::startListening()
 
 void Server::run()
 {
-        while (g_running)
+    while (g_running)
     {
+        if (_fds.empty())
+            continue;
+
+        if (poll(&_fds[0], _fds.size(), -1) < 0)
         {
-            if (_fds.empty())
+            if (errno == EINTR)
                 continue;
-
-            if (poll(&_fds[0], _fds.size(), -1) < 0)
-            {
-                if (errno == EINTR)
-                    continue;
-                perror("poll");
-                break;
-            }
-            for (size_t i = 0; i < _fds.size(); i++)
-            {
-                int fd = _fds[i].fd;
-                short revents = _fds[i].revents;
-
-                if (revents == 0)
-                    continue;
-
-                if (revents & POLLIN)
-                {
-                    if (fd == _server_fd)
-                        acceptClient();
-                    else
-                        handleClientRead(fd);
-                }
-
-                if (revents & POLLOUT)
-                    handleClientWrite(fd);
-
-                if (revents & (POLLERR | POLLHUP | POLLNVAL))
-                    _pending_remove.push_back(fd);
-            }
-
-            // APPLY NEW CLIENTS
-        
-            for (size_t i = 0; i < _pending_add.size(); i++)
-                _fds.push_back(_pending_add[i]);
-
-            _pending_add.clear();
-
-            // REMOVE CLIENTS
-
-            for (size_t i = 0; i < _pending_remove.size(); i++)
-                removeClient(_pending_remove[i]);
-
-            _pending_remove.clear();
+            perror("poll");
+            break;
         }
+
+        processPollEvents();
+        applyPendingChanges();
     }
+
     shutdownServer();
     std::cout << "Server stopped cleanly." << std::endl;
+}
+
+
+void Server::processPollEvents()
+{
+    for (std::vector<pollfd>::iterator it = _fds.begin(); it != _fds.end(); ++it)
+    {
+        int fd = it->fd;
+        short events = it->revents;
+
+        if (events == 0)
+            continue;
+
+        // =========================
+        // NEW CONNECTION
+        // =========================
+        if (events & POLLIN)
+        {
+            if (isListeningSocket(fd))
+                acceptClient(fd);
+            else
+                handleClientRead(fd);
+        }
+
+        // =========================
+        // WRITE
+        // =========================
+        if (events & POLLOUT)
+            handleClientWrite(fd);
+
+        // =========================
+        // ERRORS
+        // =========================
+        if (events & (POLLERR | POLLHUP | POLLNVAL))
+            _pending_remove.push_back(fd);
+    }
+}
+void Server::applyPendingChanges()
+{
+    // =========================
+    // ADD NEW CLIENTS
+    // =========================
+    for (size_t i = 0; i < _pending_add.size(); i++)
+        _fds.push_back(_pending_add[i]);
+
+    _pending_add.clear();
+
+    // =========================
+    // REMOVE CLIENTS
+    // =========================
+    for (size_t i = 0; i < _pending_remove.size(); i++)
+        removeClient(_pending_remove[i]);
+
+    _pending_remove.clear();
 }
 
 // ============================
 // ACCEPT CLIENT
 // ============================
 
-void Server::acceptClient()
+void Server::acceptClient(int listening_fd)
 {
-    int fd = accept(_server_fd, NULL, NULL);
+    int fd = accept(listening_fd, NULL, NULL);
     if (fd < 0)
         return;
+
     fcntl(fd, F_SETFL, O_NONBLOCK);
+
     struct pollfd pfd;
     pfd.fd = fd;
     pfd.events = POLLIN;
     pfd.revents = 0;
-    _pending_add.push_back(pfd);
-    _clients.insert(std::make_pair(fd, Client(fd)));
 
-    std::cout << "Client connected: " << fd << std::endl;
+    _pending_add.push_back(pfd);
+
+    Client client(fd);
+
+    client.server_index = findServerIndex(listening_fd); // 👈 CLAVE
+    if (client.server_index == -1)
+    {
+        close(fd);
+        return;
+    }
+    _clients.insert(std::make_pair(fd, client));
+
+    std::cout << "Client connected: " << fd
+              << " (server index: " << client.server_index << ")"
+              << std::endl;
 }
 
 // ============================
@@ -278,13 +336,14 @@ void Server::handleClientRead(int fd)
 {
     char buffer[1024];
 
-    int bytes = recv(fd, buffer, 1023, 0);
+    int bytes = recv(fd, buffer, sizeof(buffer) - 1, 0);
 
     if (bytes < 0)
     {
         if (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK)
             return;
-       _pending_remove.push_back(fd);
+
+        _pending_remove.push_back(fd);
         return;
     }
 
@@ -295,7 +354,6 @@ void Server::handleClientRead(int fd)
     }
 
     std::map<int, Client>::iterator it = _clients.find(fd);
-
     if (it == _clients.end())
         return;
 
@@ -306,6 +364,7 @@ void Server::handleClientRead(int fd)
     c.request._req = c.readBuffer;
     c.request._client_fd = fd;
 
+    // Esperar request completo
     if (!request_is_complete(c.readBuffer))
         return;
 
@@ -317,7 +376,9 @@ void Server::handleClientRead(int fd)
 
     if (!parse_request_line(c.request))
     {
-        send_error_page(fd, 400, "Bad Request", "Malformed request line.", c.request._request_id);
+        send_error_page(fd, 400, "Bad Request",
+            "Malformed request line.",
+            c.request._request_id);
         _pending_remove.push_back(fd);
         return;
     }
@@ -325,24 +386,50 @@ void Server::handleClientRead(int fd)
     if (is_cgi_path(c.request._path))
     {
         if (!handle_cgi_request(*this, c.request))
-            send_error_page(fd, 500, "Internal Server Error", "CGI handler failed.", c.request._request_id);
+            send_error_page(fd, 500, "Internal Server Error",
+                "CGI handler failed.",
+                c.request._request_id);
+
         _pending_remove.push_back(fd);
         return;
     }
 
+    // =========================
+    // CONFIG LOCAL (CORE CLEAN)
+    // =========================
+    int idx = c.server_index;
+    if (idx < 0 || idx >= (int)_servers.size())
+    {
+        send_error_page(fd, 500, "Internal Server Error",
+            "Invalid server configuration.",
+            c.request._request_id);
+        _pending_remove.push_back(fd);
+        return;
+    }
+
+    const ServerConfig &cfg = _servers[idx].config;
+
+    const std::string &root  = cfg.root;
+    const std::string &index = cfg.index;
+
     if (c.request._method == "POST")
     {
-        this->handle_post_upload(fd, c.request._path, c.request._request_id, c.request._req, c.request._www_root);
+        handle_post_upload(
+            fd,
+            c.request._path,
+            c.request._request_id,
+            c.request._req,
+            root,
+            cfg.client_max_body_size
+        );
+
         _pending_remove.push_back(fd);
         return;
     }
 
     if (c.request._method == "DELETE")
     {
-        std::string fullPath =
-            c.request._www_root.empty()
-                ? std::string("www") + c.request._path
-                : c.request._www_root + c.request._path;
+        std::string fullPath = root + c.request._path;
 
         if (std::remove(fullPath.c_str()) == 0)
             send_error_page(fd, 204, "No Content", "", c.request._request_id);
@@ -355,46 +442,56 @@ void Server::handleClientRead(int fd)
 
     if (c.request._method != "GET" && c.request._method != "HEAD")
     {
-        send_error_page(fd, 405, "Method Not Allowed", "Only GET, POST and DELETE supported.", c.request._request_id);
+        send_error_page(fd, 405, "Method Not Allowed",
+            "Only GET, POST and DELETE supported.",
+            c.request._request_id);
+
         _pending_remove.push_back(fd);
         return;
     }
 
     if (c.request._path == "/uploads")
     {
-        this->handle_uploads_listing(fd, c.request._www_root);
+        handle_uploads_listing(fd, root);
         _pending_remove.push_back(fd);
         return;
     }
 
-    std::string normalized_path;
-    if (c.request._path == "/")
-        normalized_path = "/index.html";
-    else
-        normalized_path = c.request._path;
+    // =========================
+    // PATH NORMALIZATION
+    // =========================
 
-    if (normalized_path.find("..") != std::string::npos)
+    std::string path = c.request._path;
+
+    if (path == "/")
+        path = "/" + index;
+
+    if (path.find("..") != std::string::npos)
     {
-        send_error_page(fd, 400, "Bad Request", "Invalid path.", c.request._request_id);
+        send_error_page(fd, 400, "Bad Request",
+            "Invalid path.",
+            c.request._request_id);
+
         _pending_remove.push_back(fd);
         return;
     }
 
-    std::string base_path;
-    if (c.request._www_root.empty())
-        base_path = "www";
-    else
-        base_path = c.request._www_root;
+    // =========================
+    // BUILD FILE PATH
+    // =========================
 
-    c.request._file_path = base_path + normalized_path;
+    std::string file_path = root + path;
 
     struct stat st;
-    if (stat(c.request._file_path.c_str(), &st) == 0 && S_ISDIR(st.st_mode))
-        c.request._file_path += "/index.html";
-    else if (stat(c.request._file_path.c_str(), &st) != 0 && normalized_path.find('.') == std::string::npos)
-        c.request._file_path = base_path + normalized_path + "/index.html";
+    if (stat(file_path.c_str(), &st) == 0 && S_ISDIR(st.st_mode))
+        file_path += "/" + index;
+    else if (stat(file_path.c_str(), &st) != 0 && path.find('.') == std::string::npos)
+        file_path = root + path + "/" + index;
+
+    c.request._file_path = file_path;
 
     send_file(fd, c.request._file_path, c.request._request_id);
+
     _pending_remove.push_back(fd);
 }
 
@@ -443,3 +540,43 @@ void Server::removeClient(int fd)
 
     std::cout << "Client disconnected: " << fd << std::endl;
 }
+
+
+// ============================
+// 
+// ============================
+
+bool Server::isListeningSocket(int fd)
+{
+    for (size_t i = 0; i < _servers.size(); i++)
+    {
+        if (_servers[i].fd == fd)
+            return true;
+    }
+    return false;
+}
+// ============================
+// FIND SERVER INDEX
+// ============================
+
+int Server::findServerIndex(int listening_fd)
+{
+    for (size_t i = 0; i < _servers.size(); i++)
+    {
+        if (_servers[i].fd == listening_fd)
+            return i;
+    }
+    return -1;
+}
+
+
+//===========================
+// GET CONFIG BY LISTEN FD (multiserver)
+//===========================
+
+
+/*Config &Server::getConfigByListenFd(int fd)
+{
+    (void)fd;
+    return _config;
+}*/

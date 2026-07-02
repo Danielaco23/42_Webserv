@@ -107,7 +107,7 @@ static bool is_suspicious_raw_filename(const std::string &raw_name)
  * @param client_fd Socket file descriptor.
  * @param content_length Expected number of bytes to read.
  * @return Body content as a string.
- */
+
 std::string read_request_body(int client_fd, size_t content_length)
 {
 	std::string body;
@@ -133,7 +133,7 @@ std::string read_request_body(int client_fd, size_t content_length)
 		remaining -= n;
 	}
 	return body;
-}
+}*/
 
 /**
  * @brief Saves uploaded file to the filesystem.

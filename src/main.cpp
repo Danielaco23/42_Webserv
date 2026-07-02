@@ -44,11 +44,31 @@ int main(int argc, char const *argv[])
 	// if (argc != 2)
 	// 	return (print_cerr<std::string>(ARG_ERR), 1);
 	// print_cout<std::string>(argv[1]);
-	
-	Server server(8080);
+
+	std::vector<ServerConfig> configs;
+
+	ServerConfig s1;
+	s1.host = "127.0.0.1";
+	s1.port = 8080;
+	s1.root = "www";
+	s1.index = "index.html";
+
+	ServerConfig s2;
+	s2.host = "127.0.0.1";
+	s2.port = 8081;
+	s2.root = "www";
+	s2.index = "index.html";
+
+	configs.push_back(s1);
+	configs.push_back(s2);
+
+	Server server(configs);
+
     server.initSocket();
 	server.initVariables();
 	server.startListening();
+
+	std::cout << "Server started..." << std::endl;
 
     server.run();
 
