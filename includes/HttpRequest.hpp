@@ -32,4 +32,5 @@ struct HttpRequest
     int _client_fd;
     size_t _maxBodySize;
 };
+
 #endif

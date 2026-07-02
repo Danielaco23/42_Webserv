@@ -1,6 +1,8 @@
 
 #pragma once
 
+#ifndef WEBSERVER_HPP
+# define WEBSERVER_HPP
 /*
 	ALL PRINT COLORS FOR REFERENCE:
 
@@ -18,14 +20,30 @@
 	const std::string NC = "\033[0m"
 */
 
+class Location;
 class Config;
 
-#include <iostream>
-#include <sstream>
-#include <fstream>
-#include "Config.hpp"
+# include <iostream>
+# include <sstream>
+# include <fstream>
 
-#define ARG_ERR "Wrong number of arguments.\nThe correct usage of this program is \"./webserv [config file]\".\nThis argument is not optional."
+# include "Config.hpp"
+
+# define ARG_ERR "Wrong number of arguments.\nThe correct usage of this program is \"./webserv [config file]\".\nThis argument is not optional."
+
+# define DFLT_HOST_0 127
+# define DFLT_HOST_1 0
+# define DFLT_HOST_2 0
+# define DFLT_HOST_3 1
+# define DFLT_INDEX "index.html"
+
+# define DFLT_S_NAME "Server"
+# define DFLT_MAX_BODY_SIZE 1024
+# define DFLT_AUTOINDEX false
+# define DFLT_ERRPAGE_NUM 404
+# define DFLT_ERRPAGE_ADD "/www/errors/404.html"
+# define DFLT_ADDRESS ""
+# define DFLT_LISTEN_FD -1
 
 class Webserver
 {
@@ -41,3 +59,5 @@ class Webserver
 
 		void	init(int argc, char **argv);
 };
+
+#endif
