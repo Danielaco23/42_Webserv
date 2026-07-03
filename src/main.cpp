@@ -32,48 +32,68 @@ void	print_cerr(T printable)
  * @param argv Constant array of C strings,
  * containing the arguments in order of introduction, with position 0 being the executable mane.
  */
-int main(int argc, char const *argv[])
+int main(int argc, char **argv)
 {
-	// Config config;
-	
-	(void)argv;
-	(void)argc;
-	signal(SIGINT, signalHandler);
-	signal(SIGTERM, signalHandler);
-	signal(SIGQUIT, signalHandler);
-	// if (argc != 2)
-	// 	return (print_cerr<std::string>(ARG_ERR), 1);
-	// print_cout<std::string>(argv[1]);
+    signal(SIGINT, signalHandler);
+    signal(SIGTERM, signalHandler);
+    signal(SIGQUIT, signalHandler);
 
-	std::vector<ServerConfig> configs;
+    std::vector<Config> configs;
 
-	ServerConfig s1;
-	s1.host = "127.0.0.1";
-	s1.port = 8080;
-	s1.root = "www";
-	s1.index = "index.html";
+    try
+    {
+        if (argc == 2)
+        {
+            while (true)
+            {
+                Config cfg(argv[1]);
 
-	ServerConfig s2;
-	s2.host = "127.0.0.1";
-	s2.port = 8081;
-	s2.root = "www";
-	s2.index = "index.html";
+                if (!cfg.get_is_real())
+                    break;
 
-	configs.push_back(s1);
-	configs.push_back(s2);
+                configs.push_back(cfg);
+            }
+        }
+        else
+        {
+            Config s1;
 
-	Server server(configs);
+            int host1[4] = {127, 0, 0, 1};
+
+            s1.set_host(host1);
+            s1.set_port(8080);
+            s1.set_root("www");
+            s1.set_index("index.html");
+
+            configs.push_back(s1);
+        }
+    }
+    catch (const std::exception &e)
+    {
+        std::string msg = e.what();
+
+        if (msg != "No more servers to read")
+        {
+            std::cerr << e.what() << std::endl;
+            return (1);
+        }
+    }
+
+    if (configs.empty())
+    {
+        std::cerr << "No valid servers loaded." << std::endl;
+        return (1);
+    }
+
+    Server server(configs);
 
     server.initSocket();
-	server.initVariables();
-	server.startListening();
+    server.initVariables();
+    server.startListening();
 
-	std::cout << "Server started..." << std::endl;
+    std::cout << "Server started..." << std::endl;
 
     server.run();
 
     return (0);
-
-	// TODO: Aquí se debería crear el objeto Config, parsear el archivo de configuración y luego iniciar el servidor con esa configuración.
-	// config.parseConfigFile(argv[1]);
 }

@@ -227,16 +227,17 @@ void Server::send_error_page(int client_fd,
 
     int server_index = it->second.server_index;
 
-    if (server_index < 0
-        || server_index >= (int)_servers.size())
+    if (server_index < 0 ||
+        server_index >= (int)_servers.size())
     {
         std::cerr << "Invalid server index for client "
-                  << client_fd << std::endl;
+                << client_fd << std::endl;
         return;
     }
 
-    const ServerConfig &cfg = _servers[server_index].config;
-    std::string tpl_path = cfg.root + "/errors/template.html";
+    const Config &cfg = _servers[server_index].config;
+    std::string tpl_path =
+    cfg.get_root() + "/errors/template.html";
 
     std::ifstream tpl(tpl_path.c_str());
 

@@ -9,7 +9,7 @@ volatile sig_atomic_t g_running = 1;
 // CONSTRUCTOR / DESTRUCTOR
 // ============================
 
-Server::Server(const std::vector<ServerConfig> &configs)
+Server::Server(const std::vector<Config> &configs)
 {
     for (size_t i = 0; i < configs.size(); i++)
     {
@@ -39,20 +39,38 @@ void signalHandler(int signal)
 
 void Server::shutdownServer()
 {
-    for (size_t i = 0; i < _fds.size(); i++)
+    for (size_t i = 0; i < _servers.size(); i++)
     {
-        if (_fds[i].fd >= 0)
-            close(_fds[i].fd);
+        if (_servers[i].fd >= 0)
+        {
+            close(_servers[i].fd);
+            _servers[i].fd = -1;
+        }
     }
+
+    for (size_t i = 0; i < _clients.size(); ++i)
+        ; // los clientes se cierran en removeClient()
 
     _fds.clear();
     _clients.clear();
+}
 
-    for (size_t i = 0; i < _servers.size(); i++)
-    {
-        if (_servers[i].fd != -1)
-            close(_servers[i].fd);
-    }
+// ============================
+// Auxiliary Functions
+// ============================
+
+
+static std::string getHostString( Config &cfg)
+{
+    int *host = const_cast<Config &>(cfg).get_host();
+
+    std::ostringstream oss;
+    oss << host[0] << "."
+        << host[1] << "."
+        << host[2] << "."
+        << host[3];
+
+    return oss.str();
 }
 
 // ============================
@@ -98,18 +116,33 @@ void Server::initSocket()
         int opt = 1;
         setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
 
-        ServerConfig &cfg = _servers[i].config;
+        Config &cfg = _servers[i].config;
 
         sockaddr_in addr;
         std::memset(&addr, 0, sizeof(addr));
 
         addr.sin_family = AF_INET;
-        addr.sin_port = htons(cfg.port);
-        addr.sin_addr.s_addr = inet_addr(cfg.host.c_str());
+        addr.sin_port = htons(cfg.get_port());
+
+        std::string ip = getHostString(cfg);
+        addr.sin_addr.s_addr = inet_addr(ip.c_str());
 
         if (bind(fd, (sockaddr*)&addr, sizeof(addr)) < 0)
         {
-            perror("bind");
+            if (errno == EADDRINUSE)
+            {
+                std::cerr
+                << "Webserv: cannot bind to "
+                << getHostString(cfg)
+                << ":"
+                << cfg.get_port()
+                << " because the address is already in use."
+                << std::endl;
+            }
+            else
+                perror("bind");
+
+            shutdownServer();
             exit(EXIT_FAILURE);
         }
 
@@ -140,15 +173,17 @@ void Server::startListening()
 {
     for (size_t i = 0; i < _servers.size(); i++)
     {
-        std::cout
+       Config &cfg = _servers[i].config;
+
+    std::cout
             << "Server "
             << i
             << " running on http://"
-            << _servers[i].config.host
+            << getHostString(cfg)
             << ":"
-            << _servers[i].config.port
+            << cfg.get_port()
             << std::endl;
-    }
+            }
 }
 
 // ============================
@@ -162,7 +197,7 @@ void Server::run()
         if (_fds.empty())
             continue;
 
-        if (poll(&_fds[0], _fds.size(), -1) < 0)
+        if (poll(&_fds[0], _fds.size(), 1000) < 0)
         {
             if (errno == EINTR)
                 continue;
@@ -171,6 +206,7 @@ void Server::run()
         }
 
         processPollEvents();
+        checkClientTimeouts();
         applyPendingChanges();
     }
 
@@ -359,6 +395,8 @@ void Server::handleClientRead(int fd)
 
     Client &c = it->second;
 
+    c.last_activity = std::time(NULL);
+
     c.readBuffer.append(buffer, bytes);
 
     c.request._req = c.readBuffer;
@@ -407,22 +445,21 @@ void Server::handleClientRead(int fd)
         return;
     }
 
-    const ServerConfig &cfg = _servers[idx].config;
+    Config &cfg = _servers[idx].config;
 
-    const std::string &root  = cfg.root;
-    const std::string &index = cfg.index;
-
+    const std::string root = cfg.get_root();
+    const std::string index = cfg.get_index();
+    
     if (c.request._method == "POST")
     {
-        handle_post_upload(
-            fd,
-            c.request._path,
-            c.request._request_id,
-            c.request._req,
-            root,
-            cfg.client_max_body_size
+       handle_post_upload(
+        fd,
+        c.request._path,
+        c.request._request_id,
+        c.request._req,
+        root,
+        cfg.get_client_max_body_size()
         );
-
         _pending_remove.push_back(fd);
         return;
     }
@@ -570,13 +607,31 @@ int Server::findServerIndex(int listening_fd)
 }
 
 
-//===========================
-// GET CONFIG BY LISTEN FD (multiserver)
-//===========================
+// ============================
+// Clear inactive clients after timeout
+// ============================
 
 
-/*Config &Server::getConfigByListenFd(int fd)
+void Server::checkClientTimeouts()
 {
-    (void)fd;
-    return _config;
-}*/
+    time_t now = std::time(NULL);
+
+    for (std::map<int, Client>::iterator it = _clients.begin();
+         it != _clients.end();
+         ++it)
+    {
+        Client &c = it->second;
+
+        if (now - c.last_activity > 30)
+        {
+            std::cout
+                << "Client "
+                << c.fd
+                << " timed out."
+                << std::endl;
+
+            _pending_remove.push_back(c.fd);
+        }
+    }
+}
+

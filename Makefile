@@ -27,7 +27,7 @@ CXX_NAME		=	webserv
 
 INCLUDES_FLAG	=	-I includes -I includes/config
 
-INCLUDE_FILES	=	Config_jh.hpp\
+INCLUDE_FILES	=	Config.hpp\
 					Webserver.hpp\
 					Server.hpp\
 					Client.hpp\
@@ -42,7 +42,7 @@ VPATH			=	objects/:\
 					src/webManager/:\
 
 CXX_SRC			=	main.cpp\
-					Config_jh.cpp \
+					Config.cpp \
 					Client.cpp \
 					Server.cpp \
 					sendWebPage.cpp\
@@ -53,6 +53,7 @@ CXX_SRC			=	main.cpp\
 					handleCgi.cpp \
 					webChecker.cpp \
 					parse_request.cpp\
+					Location.cpp\
 
 
 CXX_OBJ_DIR		=	objects

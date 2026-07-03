@@ -6,6 +6,7 @@
 # include <string>
 # include "HttpRequest.hpp"
 
+
 enum ClientState
 {
     READING,
@@ -25,6 +26,8 @@ public:
     ClientState state;
 
     HttpRequest request;
+
+    time_t last_activity; 
 
     Client();
     Client(int fd);

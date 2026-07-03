@@ -719,6 +719,11 @@ Config::ConfigBadConstrException::~ConfigBadConstrException() _GLIBCXX_TXN_SAFE_
 	alias cpp_comp="c++ -Wall -Wextra -Werror -std=c++98 -g3 -I includes -I includes/config";
 	cpp_comp src/config/Config.cpp && ./a.out nginx_test.conf nginx_test.conf nginx_test.conf
 */
+
+
+//==== TESTING MAIN ==//
+
+/*
 int main(int argc, char *argv[])
 {
 	for (int index = 1; index < argc; index++)
@@ -746,7 +751,7 @@ int main(int argc, char *argv[])
 	}
 	std::cout << std::endl << "-----------------------------------\n" << std::endl;
 	return (0);
-}
+}*/
 
 Config::~Config()
 {}
@@ -795,7 +800,7 @@ void	Config::set_host(int *new_data)
 	this->_host[3] = new_data[3];
 }
 
-std::string	&Config::get_root()
+const std::string	&Config::get_root() const
 {
 	return (this->_www_root);
 }
@@ -805,7 +810,7 @@ void	Config::set_root(std::string new_data)
 	this->_www_root = new_data;
 }
 
-std::string	&Config::get_index()
+const std::string	&Config::get_index() const
 {
 	return (this->_index);
 }
@@ -815,7 +820,7 @@ void	Config::set_index(std::string new_data)
 	this->_index = new_data;
 }
 
-std::string	&Config::get_server_name()
+const std::string	&Config::get_server_name() const
 {
 	return (this->_server_name);
 }
@@ -825,7 +830,7 @@ void	Config::set_server_name(std::string new_data)
 	this->_server_name = new_data;
 }
 
-size_t	&Config::get_client_max_body_size()
+const size_t	&Config::get_client_max_body_size() const
 {
 	return (this->_client_max_body_size);
 }
@@ -835,7 +840,7 @@ void	Config::set_client_max_body_size(size_t new_data)
 	this->_client_max_body_size = new_data;
 }
 
-bool	&Config::get_autoindex()
+const bool	&Config::get_autoindex() const
 {
 	return (this->_autoindex);
 }
@@ -845,7 +850,7 @@ void	Config::set_autoindex(bool new_data)
 	this->_autoindex = new_data;
 }
 
-t_err_page	&Config::get_error_pages()
+const t_err_page	&Config::get_error_pages() const
 {
 	return (this->_error_pages);
 }
@@ -855,7 +860,7 @@ void	Config::set_error_pages(t_err_page new_data)
 	this->_error_pages = new_data;
 }
 
-std::vector<Location>	&Config::get_locations()
+const std::vector<Location>	&Config::get_locations() const
 {
 	return (this->_locations);
 }
@@ -866,7 +871,7 @@ void	Config::set_locations(std::vector<Location> new_data)
 }
 
 
-std::string	&Config::get_server_address()
+const std::string	&Config::get_server_address() const
 {
 	return (this->_server_address);
 }

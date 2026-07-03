@@ -17,9 +17,10 @@
 #include <sys/stat.h>
 #include <sstream>
 #include <dirent.h>
+#include <ctime>
 
 #include "Client.hpp"
-#include "Config_jh.hpp"
+#include "Config.hpp"
 
 extern volatile sig_atomic_t g_running;
 
@@ -28,7 +29,7 @@ extern volatile sig_atomic_t g_running;
  */
 struct ListeningSocket {
     int fd;
-    ServerConfig config;
+    Config config;
 };
 
 /**
@@ -67,7 +68,7 @@ private:
                                 const std::string &www_root);
 
 public:
-    Server(const std::vector<ServerConfig> &configs);
+    Server(const std::vector<Config> &configs);
     ~Server();
 
     void initSocket();
@@ -92,6 +93,8 @@ public:
                         const std::string &title,
                         const std::string &message,
                         const std::string &request_id);
+
+    void checkClientTimeouts();
 };
 
 void signalHandler(int signal);
@@ -109,5 +112,6 @@ bool handle_cgi_request(Server &server, HttpRequest &request_data);
 bool is_cgi_path(const std::string &path);
 bool check_response(Server &server, HttpRequest &request_data);
 bool parse_request_line(HttpRequest &request_data);
+
 
 #endif
