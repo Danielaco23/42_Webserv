@@ -32,7 +32,9 @@ class Config;
 # define ARG_ERR "Wrong number of arguments.\nThe correct usage of this program is \"./webserv [config file]\".\nThis argument is not optional."
 
 /*
+----------------------------------------------------------
 	MAX, MIN AND DEFAULT VALUES USED IN CONFIG PARSING
+----------------------------------------------------------
 */
 
 # define MAX_PORT 65535
@@ -42,22 +44,34 @@ class Config;
 # define DFLT_HOST_1 0
 # define DFLT_HOST_2 0
 # define DFLT_HOST_3 1
+
+# define MIN_HOST 0
+# define MAX_HOST 127
+
 # define DFLT_INDEX "index.html"
 
-# define DFLT_S_NAME "Server"
-# define DFLT_MAX_BODY_SIZE 1024
+# define DFLT_S_NAME "Localhost"
+
+# define DFLT_CMBS 1024
 
 # define MIN_CMBS 1
 # define MAX_CMBS 2147483647
 
 # define DFLT_AUTOINDEX false
+
+# define MIN_ERRPAGE_NUM 0
+# define MAX_ERRPAGE_NUM 999
+
 # define DFLT_ERRPAGE_NUM 404
 # define DFLT_ERRPAGE_ADD "/www/errors/404.html"
 # define DFLT_ADDRESS ""
+
 # define DFLT_LISTEN_FD -1
 
 /*
+-----------------------
 	WEBSERVER CLASS
+-----------------------
 */
 
 class Webserver

@@ -235,12 +235,14 @@ static void check_boundaries(std::string &cntnts)
 	}
 }
 
-Config::Config(void):_is_real(false), _port(0), _www_root(""), _index(DFLT_INDEX), _server_name(DFLT_S_NAME), _client_max_body_size(DFLT_MAX_BODY_SIZE), _autoindex(DFLT_AUTOINDEX), _server_address(DFLT_ADDRESS), _listen_fd(DFLT_LISTEN_FD)
+Config::Config(void):_is_real(false), _port(0), _www_root(""), _index(DFLT_INDEX), _server_name(DFLT_S_NAME), _client_max_body_size(DFLT_CMBS), _autoindex(DFLT_AUTOINDEX), _server_address(DFLT_ADDRESS), _listen_fd(DFLT_LISTEN_FD)
 {
 	this->_host[0] = DFLT_HOST_0;
 	this->_host[1] = DFLT_HOST_1;
 	this->_host[2] = DFLT_HOST_2;
 	this->_host[3] = DFLT_HOST_3;
+
+	this->_error_pages[DFLT_ERRPAGE_NUM] = DFLT_ERRPAGE_ADD;
 }
 
 void	Config::parse_required(std::string &cntnts)
@@ -264,10 +266,8 @@ void	Config::parse_port(std::string &cntnts)
 		{
 			size_t	start = rev_find('\n', cntnts, index);
 			size_t	end = cntnts.find('\n', index);
-
 			if (end == cntnts.npos)
 				end = cntnts.find(';', index);
-
 			if (start == cntnts.npos)
 				start = 0;
 			else
@@ -277,9 +277,9 @@ void	Config::parse_port(std::string &cntnts)
 				index ++;
 			if (isdigit(cntnts[index]))
 			{
-				size_t res;
+				size_t		res;
 				try
-				{res = ft_stoi(cntnts.substr(index, 4));}
+				{res = ft_stoi(cntnts.substr(index, end-index-1));}
 				catch(const std::exception& e)
 				{throw_with_msg("Error parsing port number");}
 				this->_port = res;
@@ -335,14 +335,14 @@ void	Config::parse_root(std::string &cntnts)
 
 void	Config::parse_optional(std::string &cntnts)
 {
-	parse_host(cntnts);				// APPARENTLY defaults to 127.0.0.1 (DFLT_HOST_[0-3]) ?
-	parse_index(cntnts);			// Defaults to DFLT_INDEX ("index.html")
-	parse_s_name(cntnts);
-	parse_cmbs(cntnts);
-	parse_autoindex(cntnts);
-	parse_error_pages(cntnts);
-	parse_locations(cntnts);
-	parse_s_address(cntnts);
+	parse_host(cntnts);				// Defaults to DFLT_HOST_0.DFLT_HOST_1.DFLT_HOST_2.DFLT_HOST_3
+	parse_index(cntnts);			// Defaults to DFLT_INDEX
+	parse_s_name(cntnts);			// Defaults to DFLT_S_NAME
+	parse_cmbs(cntnts);				// Defaults to DFLT_CMBS
+	parse_autoindex(cntnts);		// Defaults to DFLT_AUTOINDEX
+	parse_error_pages(cntnts);		// Defaults to DFLT_ERRPAGE_NUM and DFLT_ERRPAGE_ADD
+	parse_locations(cntnts);		// Defaults to empty
+	parse_s_address(cntnts);		// Defaults to DFLT_ADDRESS
 }
 
 void	Config::parse_host(std::string &cntnts)
@@ -387,6 +387,8 @@ void	Config::parse_host(std::string &cntnts)
 						{this->_host[i] = ft_stoi(host_num.substr(0, num_end));}
 						catch(const std::exception& e)
 						{throw_with_msg("Error parsing host number");}
+						if (this->_host[i] > MAX_HOST || this->_host[i] < MIN_HOST)
+							throw_with_msg("Host out of scope.");
 						while (host_num[0] && host_num[0] != '.')
 							host_num.erase(0, 1);
 						if (host_num[0] == '.')
@@ -518,7 +520,7 @@ void	Config::parse_cmbs(std::string &cntnts)
 			index = cntnts.find(word, index + 1);
 		else
 		{
-			this->_client_max_body_size = DFLT_MAX_BODY_SIZE;
+			this->_client_max_body_size = DFLT_CMBS;
 			break ;
 		}
 	}
@@ -608,9 +610,11 @@ void	Config::parse_error_pages(std::string &cntnts)
 				catch(const std::exception& e)
 				{throw_with_msg("Error parsing error pages");}
 
+				if (entry_num < MIN_ERRPAGE_NUM || entry_num > MAX_ERRPAGE_NUM)
+					throw_with_msg("Error page(s) out of scope");
+
 				if (!this->_error_pages[entry_num].empty())
 					throw_with_msg("Duplicate error pages present");
-
 				while (isspace(cntnts[index]))
 					index ++;
 
@@ -700,26 +704,32 @@ void	Config::parse_s_address(std::string &cntnts)
 */
 Config::Config(std::string config_file): _is_real(false), _port(0), _www_root(""), _index(""), _client_max_body_size(0), _autoindex(false), _listen_fd(-1)
 {
+	std::cout << std::endl << "BEGIN PARSING OF SERVER Nº " << server_count(false, false) << std::endl << std::endl;
 	for (size_t i = 0; i < 4; i++)
 		this->_host[i] = 0;
 	if (config_file.empty() || config_file.size() < 6)
-		throw (ConfigBadConstrException("Config file name too small"));
+		throw_with_msg("Config file name too small");
 	if (config_file.substr(config_file.size() - 5) != ".conf")
-		throw (ConfigBadConstrException("Config file wrong file extension"));
+		throw_with_msg("Config file wrong file extension");
 
 	std::string		cntnts = read_whole_file(config_file);
 	rmv_all_char_onwards(cntnts, "#");
 	check_spacing(cntnts);
 	if (cntnts.empty())
-		throw (ConfigBadConstrException("Config file is empty"));
+		throw_with_msg("Config file is empty");
 	check_boundaries(cntnts);
 
 	cntnts = extract_server_info(cntnts);
 	if (cntnts.empty())
-		throw (ConfigBadConstrException("Config file wrong format"));
+		throw_with_msg("Config file wrong format");
+
+	this->_listen_fd = DFLT_LISTEN_FD;
 
 	parse_required(cntnts);
 	parse_optional(cntnts);
+	if (!cntnts.empty())
+		throw_with_msg("Invalid config parameter(s)");
+	//std::cout << "-----REMNANTS-----" << std::endl << cntnts << std::endl << "------------------" << std::endl;
 	this->_is_real = true;
 	server_count(true, false);
 	// std::cout << "CONTENT [" << cntnts << "]\n";

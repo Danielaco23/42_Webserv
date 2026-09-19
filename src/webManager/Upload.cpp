@@ -233,6 +233,7 @@ bool extract_multipart_file(
  */
 int process_uploads(const std::string &body, const std::string &boundary, const std::string &www_root)
 {
+	std::cout << "UPLOAD SIGNAL ARRIVED" << std::endl;
 	int count = 0;
 	if (boundary.empty())
 		return count;

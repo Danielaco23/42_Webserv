@@ -106,7 +106,7 @@ Location::Location(void)
 
 	this->_return = "";
 	this->_alias = "";
-	this->_client_max_body_size = DFLT_MAX_BODY_SIZE;
+	this->_client_max_body_size = DFLT_CMBS;
 }
 
 Location::Location(const Location &other)
@@ -148,7 +148,7 @@ Location::Location(std::string path, std::string &cntnts)
 		if (index + 4 < cntnts.size() && !strncmp(&cntnts[index], "root", 4))
 		{
 			if (flags[0])
-				throw (Config::ConfigBadConstrException("duplicate root"));
+				throw (Config::ConfigBadConstrException("Duplicate root"));
 			index += 4;
 			while (index < cntnts.size() - 1 && isspace(cntnts[index]))
 				index ++;
@@ -157,21 +157,20 @@ Location::Location(std::string path, std::string &cntnts)
 			flags[0] = true;
 			std::cout << "\tLocation ROOT [" << this->_root << "]\n";
 		}
-		else if ((index + 13 < cntnts.size() && !strncmp(&cntnts[index], "allow_methods", 13))
-			|| (index + 8 < cntnts.size() && !strncmp(&cntnts[index], "methods", 8)))
+		else if ((index + 13 < cntnts.size() && !strncmp(&cntnts[index], "allow_methods", 13) && isspace(cntnts[index + 13])) || (index + 8 < cntnts.size() && !strncmp(&cntnts[index], "methods", 8) && isspace(cntnts[index + 8])))
 		{
+			std::cout << "\tFound \"allow_methods\"" << std::endl;
 			if (flags[1])
-				throw (Config::ConfigBadConstrException("duplicate allow_methods"));
+				throw (Config::ConfigBadConstrException("Duplicate allow_methods"));
 
-			if (cntnts[index] == 'a')
-				index += 5;
-			index += 8;
+			while (index < cntnts.size() - 1 && !isspace(cntnts[index]))
+				index ++;
 			while (index < cntnts.size() - 1 && isspace(cntnts[index]))
 				index ++;
 
 			std::string	extract = cntnts.substr(index, cntnts.find(';') - index);
 			if (extract.empty())
-				throw (Config::ConfigBadConstrException("invalid allow_methods"));
+				throw (Config::ConfigBadConstrException("Invalid allow_methods"));
 			while (!extract.empty())
 			{
 				while (isspace(extract[0]))
@@ -180,32 +179,18 @@ Location::Location(std::string path, std::string &cntnts)
 					break ;
 				if (!isspace(extract[extract.size() - 1]))
 					extract += " ";
-				if (strncmp(extract.c_str(), "GET", 3)
-					&& (3 >= extract.size() || isspace(extract[3])))
-				{
+				if (strncmp(extract.c_str(), "GET", 3) == 0 && (3 >= extract.size() || isspace(extract[3])))
 					this->_methods[0] = true;
-					std::cout << "\t\tGET METHOD [" << extract << "]\n";
-				}
-				else if (strncmp(extract.c_str(), "POST", 4)
-					&& (4 >= extract.size() || isspace(extract[4])))
-				{
+				else if (strncmp(extract.c_str(), "POST", 4) == 0 && (4 >= extract.size() || isspace(extract[4])))
 					this->_methods[1] = true;
-					std::cout << "\t\tPOST METHOD [" << extract << "]\n";
-				}
-				else if (strncmp(extract.c_str(), "PUT", 3)
-					&& (3 >= extract.size() || isspace(extract[3])))
-				{
+				else if (strncmp(extract.c_str(), "DELETE", 6) == 0 && (6 >= extract.size() || isspace(extract[6])))
 					this->_methods[2] = true;
-					std::cout << "\t\tPUT METHOD [" << extract << "]\n";
-				}
-				else if (strncmp(extract.c_str(), "HEAD", 4)
-					&& (4 >= extract.size() || isspace(extract[4])))
-				{
+				else if (strncmp(extract.c_str(), "PUT", 3) == 0 && (3 >= extract.size() || isspace(extract[3])))
 					this->_methods[3] = true;
-					std::cout << "\t\tPUT METHOD [" << extract << "]\n";
-				}
+				else if (strncmp(extract.c_str(), "HEAD", 4) == 0 && (4 >= extract.size() || isspace(extract[4])))
+					this->_methods[4] = true;
 				else
-					throw (Config::ConfigBadConstrException("invalid allow_methods"));
+					throw (Config::ConfigBadConstrException("Invalid allow_methods entry"));
 				while (!isspace(extract[0]))
 					extract.erase(0, 1);
 				while (isspace(extract[0]))
@@ -214,10 +199,10 @@ Location::Location(std::string path, std::string &cntnts)
 			std::cout << "\tLocation METHODS FINISHED\n";
 			flags[1] = true;
 		}
-		else if (index + 9 < cntnts.size() && !strncmp(&cntnts[index], "autoindex", 9))
+		else if (index + 9 < cntnts.size() && !strncmp(&cntnts[index], "autoindex", 9) && isspace(cntnts[index + 9]))
 		{
 			if (flags[2])
-				throw (Config::ConfigBadConstrException("duplicate autoindex"));
+				throw (Config::ConfigBadConstrException("Duplicate autoindex"));
 			index += 9;
 			while (index < cntnts.size() - 1 && isspace(cntnts[index]))
 				index ++;
@@ -234,14 +219,14 @@ Location::Location(std::string path, std::string &cntnts)
 				std::cout <<"\tLocation AUTOINDEX [FALSE]\n";
 			}
 			else
-				throw (Config::ConfigBadConstrException("invalid autoindex"));
+				throw (Config::ConfigBadConstrException("Invalid autoindex"));
 
 			flags[2] = true;
 		}
-		else if (index + 5 < cntnts.size() && !strncmp(&cntnts[index], "index", 5))
+		else if (index + 5 < cntnts.size() && !strncmp(&cntnts[index], "index", 5) && isspace(cntnts[index + 5]))
 		{
 			if (flags[3])
-				throw (Config::ConfigBadConstrException("duplicate index"));
+				throw (Config::ConfigBadConstrException("Duplicate index"));
 			index += 5;
 			while (index < cntnts.size() - 1 && isspace(cntnts[index]))
 				index ++;
@@ -250,10 +235,10 @@ Location::Location(std::string path, std::string &cntnts)
 			std::cout << "\tLocation INDEX [" << this->_index << "]\n";
 			flags[3] = true;
 		}
-		else if (index + 6 < cntnts.size() && !strncmp(&cntnts[index], "return", 6))
+		else if (index + 6 < cntnts.size() && !strncmp(&cntnts[index], "return", 6) && isspace(cntnts[index + 6]))
 		{
 			if (flags[4])
-				throw (Config::ConfigBadConstrException("duplicate return"));
+				throw (Config::ConfigBadConstrException("Duplicate return"));
 			index += 6;
 			while (index < cntnts.size() - 1 && isspace(cntnts[index]))
 				index ++;
@@ -262,10 +247,10 @@ Location::Location(std::string path, std::string &cntnts)
 			std::cout << "\tLocation RETURN [" << this->_return << "]\n";
 			flags[4] = true;
 		}
-		else if (index + 5 < cntnts.size() && !strncmp(&cntnts[index], "alias", 5))
+		else if (index + 5 < cntnts.size() && !strncmp(&cntnts[index], "alias", 5) && isspace(cntnts[index + 5]))
 		{
 			if (flags[5])
-				throw (Config::ConfigBadConstrException("duplicate alias"));
+				throw (Config::ConfigBadConstrException("Duplicate alias"));
 			index += 5;
 			while (index < cntnts.size() - 1 && isspace(cntnts[index]))
 				index ++;
@@ -274,16 +259,16 @@ Location::Location(std::string path, std::string &cntnts)
 			std::cout << "\tLocation ALIAS [" << this->_alias << "]\n";
 			flags[5] = true;
 		}
-		else if (index + 7 < cntnts.size() && !strncmp(&cntnts[index], "cgi_ext", 7))
+		else if (index + 7 < cntnts.size() && !strncmp(&cntnts[index], "cgi_ext", 7) && isspace(cntnts[index + 7]))
 		{
 			if (flags[6])
-				throw (Config::ConfigBadConstrException("duplicate cgi_ext"));
+				throw (Config::ConfigBadConstrException("Duplicate cgi_ext"));
 			index += 7;
 			while (index < cntnts.size() - 1 && isspace(cntnts[index]))
 				index ++;
 			std::string	extract = cntnts.substr(index, cntnts.find(';') - index);
 			if (extract.empty())
-				throw (Config::ConfigBadConstrException("invalid cgi_ext"));
+				throw (Config::ConfigBadConstrException("Invalid cgi_ext"));
 			while (!extract.empty())
 			{
 				while (isspace(extract[0]))
@@ -312,16 +297,16 @@ Location::Location(std::string path, std::string &cntnts)
 			
 			flags[6] = true;
 		}
-		else if (index + 8 < cntnts.size() && !strncmp(&cntnts[index], "cgi_path", 8))
+		else if (index + 8 < cntnts.size() && !strncmp(&cntnts[index], "cgi_path", 8) && isspace(cntnts[index + 8]))
 		{
 			if (flags[7])
-				throw (Config::ConfigBadConstrException("duplicate cgi_path"));
+				throw (Config::ConfigBadConstrException("Duplicate cgi_path"));
 			index += 8;
 			while (index < cntnts.size() - 1 && isspace(cntnts[index]))
 				index ++;
 			std::string	extract = cntnts.substr(index, cntnts.find(';') - index);
 			if (extract.empty())
-				throw (Config::ConfigBadConstrException("invalid cgi_path"));
+				throw (Config::ConfigBadConstrException("Invalid cgi_path"));
 			while (!extract.empty())
 			{
 				while (isspace(extract[0]))
@@ -350,19 +335,22 @@ Location::Location(std::string path, std::string &cntnts)
 			}
 			flags[7] = true;
 		}
-		else if (index + 20 < cntnts.size() && !strncmp(&cntnts[index], "client_max_body_size", 20))
+		else if (index + 20 < cntnts.size() && !strncmp(&cntnts[index], "client_max_body_size", 20) && isspace(cntnts[index + 20]))
 		{
 			if (flags[8])
-				throw (Config::ConfigBadConstrException("duplicate client_max_body_size"));
+				throw (Config::ConfigBadConstrException("Duplicate client_max_body_size"));
 			index += 20;
 			while (index < cntnts.size() - 1 && isspace(cntnts[index]))
 				index ++;
-			this->_client_max_body_size = ft_stoi(cntnts.substr(index, cntnts.find(';') - index));
+			try
+			{this->_client_max_body_size = ft_stoi(cntnts.substr(index, cntnts.find(';') - index));}
+			catch(const std::exception& e)
+			{throw (Config::ConfigBadConstrException("Invalid client max body size"));}
 			std::cout << "\tLocation CLIENT_MAX_BODY_SIZE [" << this->_client_max_body_size << "]\n";
 			flags[8] = true;
 		}
 		else
-			throw (Config::ConfigBadConstrException("invalid entry"));
+			throw (Config::ConfigBadConstrException("Invalid Location entry"));
 		cntnts.erase(ln_start, (ln_end - ln_start) + 1);
 	}
 }
