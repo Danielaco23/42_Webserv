@@ -52,7 +52,7 @@ class Config;
 
 # define DFLT_S_NAME "Localhost"
 
-# define DFLT_CMBS 1024
+# define DFLT_CMBS 1000000
 
 # define MIN_CMBS 1
 # define MAX_CMBS 2147483647
