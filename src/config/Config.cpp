@@ -4,14 +4,14 @@
 #define FILE_READ_BUFFER 256
 
 template <typename T>
-static std::string toString(const T val)
+std::string toString(const T val)
 {
 	std::stringstream stream;
 	stream << val;
 	return stream.str();
 }
 
-static size_t rev_find(char c, std::string cntnts, size_t index)
+size_t rev_find(char c, std::string cntnts, size_t index)
 {
 	for (size_t i = index; i > 0; i--)
 	{
@@ -23,9 +23,11 @@ static size_t rev_find(char c, std::string cntnts, size_t index)
 	return (cntnts.npos);
 }
 
-static int	ft_stoi(std::string str)
+size_t	ft_stoi(std::string str)
 {
-	std::stringstream		ss(str);
+	std::stringstream	ss(str);
+	size_t					res;
+
 	if (str.empty() || str.length() > 10)
 		throw (std::exception());
 
@@ -33,8 +35,9 @@ static int	ft_stoi(std::string str)
 		if(!isdigit(str[i]))
 			throw (std::exception());
 
-	int						res;
 	ss >> res;
+	if (ss.fail())
+		throw (std::exception());
 	return (res);
 }
 
@@ -251,6 +254,7 @@ void	Config::parse_port(std::string &cntnts)
 	std::string		word = "listen";
 	size_t			index = cntnts.find(word);
 
+	this->_port = 0;
 	while (this->_port == 0)
 	{
 		if (index == cntnts.npos)
@@ -258,8 +262,8 @@ void	Config::parse_port(std::string &cntnts)
 		if (isspace(cntnts[index + word.length()]) && (rev_find('{', cntnts, index) == cntnts.npos
 			|| rev_find('}', cntnts, index) != cntnts.npos))
 		{
-			size_t			start = rev_find('\n', cntnts, index);
-			size_t			end = cntnts.find('\n', index);
+			size_t	start = rev_find('\n', cntnts, index);
+			size_t	end = cntnts.find('\n', index);
 
 			if (end == cntnts.npos)
 				end = cntnts.find(';', index);
@@ -271,13 +275,18 @@ void	Config::parse_port(std::string &cntnts)
 			index += word.length();
 			while (isspace(cntnts[index]))
 				index ++;
-			if (isdigit(cntnts[index]) && isdigit(cntnts[index + 1]) && isdigit(cntnts[index + 2]) && isdigit(cntnts[index + 3]))
+			if (isdigit(cntnts[index]))
 			{
-				this->_port = ft_stoi(cntnts.substr(index, 4));
+				size_t res;
+				try
+				{res = ft_stoi(cntnts.substr(index, 4));}
+				catch(const std::exception& e)
+				{throw_with_msg("Error parsing port number");}
+				this->_port = res;
+				if (this->_port > MAX_PORT || this->_port < MIN_PORT)
+					throw_with_msg("Invalid port number");
 				cntnts.erase(start, end - start + 1);
-			}	
-			/*else if (isdigit(cntnts[index]) && isdigit(cntnts[index + 1]))
-				this->_port = ft_stoi(cntnts.substr(index, 2));*/
+			}
 			else
 				throw_with_msg("Invalid port number");
 		}
@@ -338,8 +347,8 @@ void	Config::parse_optional(std::string &cntnts)
 
 void	Config::parse_host(std::string &cntnts)
 {
-	std::string		word = "host";
-	size_t			index = cntnts.find(word);
+	std::string					word = "host";
+	size_t						index = cntnts.find(word);
 
 	while (this->_host[0] == 0)
 	{
@@ -347,8 +356,8 @@ void	Config::parse_host(std::string &cntnts)
 			&& (cntnts.find("localhost") == cntnts.npos || index - cntnts.find("localhost") != 5)
 			&& (rev_find('{', cntnts, index) == cntnts.npos || rev_find('}', cntnts, index) != cntnts.npos))
 		{
-			size_t		start = rev_find('\n', cntnts, index);
-			size_t		end = cntnts.find('\n', index);
+			size_t				start = rev_find('\n', cntnts, index);
+			size_t				end = cntnts.find('\n', index);
 
 			if (end == cntnts.npos)
 				end = cntnts.find(';', index);
@@ -362,7 +371,7 @@ void	Config::parse_host(std::string &cntnts)
 				index ++;
 			try
 			{
-				std::string host_num = cntnts.substr(index, cntnts.find(';', index) - index);
+				std::string		host_num = cntnts.substr(index, cntnts.find(';', index) - index);
 				if (host_num != "localhost")
 				{
 					for (size_t i = 0; i < 4; i++)
@@ -374,7 +383,10 @@ void	Config::parse_host(std::string &cntnts)
 								throw (std::exception());
 							num_end = host_num.size();
 						}
-						this->_host[i] = ft_stoi(host_num.substr(0, num_end));
+						try
+						{this->_host[i] = ft_stoi(host_num.substr(0, num_end));}
+						catch(const std::exception& e)
+						{throw_with_msg("Error parsing host number");}
 						while (host_num[0] && host_num[0] != '.')
 							host_num.erase(0, 1);
 						if (host_num[0] == '.')
@@ -386,9 +398,7 @@ void	Config::parse_host(std::string &cntnts)
 				cntnts.erase(start, end - start + 1);
 			}
 			catch(const std::exception& e)
-			{
-				throw_with_msg("Invalid host number");
-			}
+			{throw_with_msg("Invalid host number");}
 		}
 		if (index != cntnts.npos && index != cntnts.size() - 1)
 			index = cntnts.find(word, index + 1);
@@ -495,7 +505,12 @@ void	Config::parse_cmbs(std::string &cntnts)
 			index += word.length();
 			while (isspace(cntnts[index]))
 				index ++;
-			this->_client_max_body_size = ft_stoi(cntnts.substr(index, cntnts.find(';', index) - index));
+			try
+			{this->_client_max_body_size = ft_stoi(cntnts.substr(index, cntnts.find(';', index) - index));}
+			catch(const std::exception& e)
+			{throw_with_msg("Error parsing client max body size");}
+			if (this->_client_max_body_size < MIN_CMBS || this->_client_max_body_size > MAX_CMBS)
+				throw_with_msg("Client max body size out of scope");
 			cntnts.erase(start, end - start + 1);
 			break ;
 		}
@@ -570,6 +585,7 @@ void	Config::parse_error_pages(std::string &cntnts)
 			{
 				size_t			start = rev_find('\n', cntnts, index);
 				size_t			end = cntnts.find('\n', index);
+				short			entry_num;
 
 				if (end == cntnts.npos)
 					end = cntnts.find(';', index);
@@ -587,7 +603,10 @@ void	Config::parse_error_pages(std::string &cntnts)
 				while (!isspace(cntnts[index]))
 					index ++;
 
-				short	entry_num = ft_stoi(cntnts.substr(arg_start, index - arg_start));
+				try
+				{entry_num = ft_stoi(cntnts.substr(arg_start, index - arg_start));}
+				catch(const std::exception& e)
+				{throw_with_msg("Error parsing error pages");}
 
 				if (!this->_error_pages[entry_num].empty())
 					throw_with_msg("Duplicate error pages present");
@@ -694,6 +713,7 @@ Config::Config(std::string config_file): _is_real(false), _port(0), _www_root(""
 	if (cntnts.empty())
 		throw (ConfigBadConstrException("Config file is empty"));
 	check_boundaries(cntnts);
+
 	cntnts = extract_server_info(cntnts);
 	if (cntnts.empty())
 		throw (ConfigBadConstrException("Config file wrong format"));

@@ -1,33 +1,6 @@
 
 #include "Location.hpp"
 
-static size_t rev_find(char c, std::string cntnts, size_t index)
-{
-	for (size_t i = index; i > 0; i--)
-	{
-		if (cntnts[i] == c)
-			return (i);
-	}
-	if (cntnts[0] == c)
-		return (0);
-	return (cntnts.npos);
-}
-
-static int	ft_stoi(std::string str)
-{
-	std::stringstream		ss(str);
-	if (str.empty() || str.length() > 10)
-		throw (std::exception());
-
-	for (size_t i = 0; i < str.length(); ++i)
-		if(!isdigit(str[i]))
-			throw (std::exception());
-
-	int						res;
-	ss >> res;
-	return (res);
-}
-
 std::string	Location::get_path(void)
 {
 	return (this->_path);

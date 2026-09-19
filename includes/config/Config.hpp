@@ -48,8 +48,7 @@ class Config
 		Config(void);
 		Config(std::string config_file);
 
-		void							add_location(std::string path,
-										std::string content);
+		void							add_location(std::string path, std::string content);
 
 		bool							&get_is_real();
 		void							set_is_real(bool new_data);
@@ -101,5 +100,13 @@ class Config
 
 		~Config();
 };
+
+/*
+	STRING MANAGEMENT
+*/
+template <typename T>
+std::string								toString(const T val);
+size_t									rev_find(char c, std::string cntnts, size_t index);
+size_t									ft_stoi(std::string str);
 
 #endif
