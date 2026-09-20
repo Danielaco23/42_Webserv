@@ -10,22 +10,15 @@
 #include <vector>
 #include <fcntl.h>
 
-static bool send_all(int fd, const std::string &data)
+static bool send_response(int client_fd, const std::string &response)
 {
-	size_t sent = 0;
-	while (sent < data.size())
-	{
-		ssize_t n = send(fd, data.c_str() + sent, data.size() - sent, 0);
-		if (n < 0)
-		{
-			if (errno == EINTR)
-				continue;
-			return false;
-		}
-		if (n == 0)
-			return false;
-		sent += static_cast<size_t>(n);
-	}
+	ssize_t sent;
+
+	sent = send(client_fd, response.c_str(), responsae.size(), 0);
+	if (sent < 0)
+		return false;
+	if (static_cast<size_t>(sent) != response.size())
+		return false;
 	return true;
 }
 
@@ -134,7 +127,7 @@ static void send_cgi_http_response(int client_fd, const std::string &cgi_output)
 		"Content-Length: " + size_to_string(body.size()) + "\r\n"
 		"Connection: close\r\n\r\n" + body;
 
-	send_all(client_fd, response);
+	send_response(client_fd, response);
 	close(client_fd);
 }
 
@@ -161,7 +154,7 @@ bool handle_cgi_request(Server &server, HttpRequest &request_data)
 			"Content-Length: " + size_to_string(body.size()) + "\r\n"
 			"Connection: close\r\n\r\n" + body;
 
-		send_all(request_data._client_fd, response);
+		send_respose(request_data._client_fd, response);
 		close(request_data._client_fd);
 		return true;
 	}
@@ -175,7 +168,7 @@ bool handle_cgi_request(Server &server, HttpRequest &request_data)
 			"Content-Length: 0\r\n"
 			"Connection: close\r\n\r\n";
 
-		send_all(request_data._client_fd, msg);
+		send_respose(request_data._client_fd, msg);
 		close(request_data._client_fd);
 		return true;
 	}
@@ -188,7 +181,7 @@ bool handle_cgi_request(Server &server, HttpRequest &request_data)
 			"Content-Length: 0\r\n"
 			"Connection: close\r\n\r\n";
 
-		send_all(request_data._client_fd, msg);
+		send_respose(request_data._client_fd, msg);
 		close(request_data._client_fd);
 		return true;
 	}

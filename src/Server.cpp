@@ -370,15 +370,12 @@ static bool request_is_complete(const std::string &request)
 
 void Server::handleClientRead(int fd)
 {
-    char buffer[1024];
+    char	buffer[1024];
 
-    int bytes = recv(fd, buffer, sizeof(buffer) - 1, 0);
+    int		bytes = recv(fd, buffer, sizeof(buffer) - 1, MSG_DONTWAIT);
 
     if (bytes < 0)
     {
-        if (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK)
-            return;
-
         _pending_remove.push_back(fd);
         return;
     }
@@ -545,13 +542,19 @@ void Server::handleClientWrite(int fd)
     Client &c = it->second;
 
     ssize_t sent = send(fd, c.writeBuffer.c_str(), c.writeBuffer.size(), 0);
-    if (sent <= 0)
+    if (sent < 0)
     {
         _pending_remove.push_back(fd);
         return;
     }
-
-    _pending_remove.push_back(fd);
+    if (sent == 0)
+    {
+        _pending_remove.push_back(fd);
+        return;
+    }
+    c.writeBuffer.erase(0, sent);
+    if (c.writeBuffer.empty())
+        _pending_remove.push_back(fd);
 }
 
 // ============================

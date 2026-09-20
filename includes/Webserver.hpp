@@ -52,7 +52,8 @@ class Config;
 
 # define DFLT_S_NAME "Localhost"
 
-# define DFLT_CMBS 1000000
+// Default max body size of 50 MB
+# define DFLT_CMBS 50000000
 
 # define MIN_CMBS 1
 # define MAX_CMBS 2147483647
@@ -74,19 +75,6 @@ class Config;
 -----------------------
 */
 
-class Webserver
-{
-	private:
-		Config			&_config;
-		int				_server_socket;
 
-	public:
-		Webserver(Config &config, int server_socket);
-		// Webserver(const Webserver &other);
-		// Webserver &operator=(const Webserver &other);
-		~Webserver();
-
-		void	init(int argc, char **argv);
-};
 
 #endif
