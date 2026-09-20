@@ -14,22 +14,7 @@
  * @param len Number of bytes to send from the buffer.
  * @return true if all bytes were sent successfully, false otherwise.
  */
-static bool sendAll(int fd, const char *buf, size_t len)
-{
-	size_t sent = 0;
-	while (sent < len)
-	{
-		ssize_t n = send(fd, buf + sent, static_cast<size_t>(len - sent), 0);
-		if (n < 0)
-		{
-			if (errno == EINTR) continue;
-			return false;
-		}
-		if (n == 0) return false;
-		sent += static_cast<size_t>(n);
-	}
-	return true;
-}
+
 
 /**
  * @brief Sends a string to a socket file descriptor until all bytes are written.
@@ -37,10 +22,6 @@ static bool sendAll(int fd, const char *buf, size_t len)
  * @param s String to send.
  * @return true if all bytes were sent successfully, false otherwise.
  */
-static bool sendAll(int fd, const std::string &s)
-{
-	return sendAll(fd, s.data(), s.size());
-}
 
 /**
  * @brief Converts an integer value to string.
@@ -181,14 +162,13 @@ void Server::send_file(int client_fd, const std::string &filepath, const std::st
 
     std::ifstream file(filepath.c_str(), std::ios::in | std::ios::binary);
     if (!file)
-    {
-        std::ostringstream why;
-        why << "Could not open " << filepath << " (errno=" << errno << ") " << strerror(errno);
-        std::cerr << why.str() << " (" << request_id << ")\n";
-
-        send_error_page(client_fd, 404, "Not Found", "The requested resource was not found.", request_id);
-        return;
-    }
+	{
+		std::cerr << "Could not open "
+			<< filepath << " (" << request_id << ")\n";
+		send_error_page(client_fd, 404, "Not Found",
+			"The requested resource was not found.", request_id);
+		return;
+	}
 
     std::string body = read_stream(file);
     std::string mime = get_mime_type(filepath);
@@ -196,15 +176,12 @@ void Server::send_file(int client_fd, const std::string &filepath, const std::st
 
     // HEAD handling CORRECTO
     if (it->second.request._method == "HEAD")
-    {
-        sendAll(client_fd, headers);
-        close(client_fd);
-        return;
-    }
+        it->second.writeBuffer = headers;
+    else
+		it->second.writeBuffer = headers + body;
 
-    sendAll(client_fd, headers);
-    sendAll(client_fd, body);
-    close(client_fd);
+	it->second.state = WRITING;
+	enableWriteEvent(client_fd);
 }
 
 /**
@@ -264,7 +241,9 @@ void Server::send_error_page(int client_fd,
         fallback << "Request id: "
                  << request_id;
 
-        sendAll(client_fd, fallback.str());
+        it->second.writeBuffer = fallback.str();
+        it->second.state = WRITING;
+        enableWriteEvent(client_fd);
         return;
     }
 
@@ -295,6 +274,7 @@ void Server::send_error_page(int client_fd,
             "text/html; charset=UTF-8",
             html.size());
 
-    sendAll(client_fd, headers);
-    sendAll(client_fd, html);
+    it->second.writeBuffer = headers + html;
+    it->second.state = WRITING;
+    enableWriteEvent(client_fd);
 }

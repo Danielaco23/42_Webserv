@@ -217,13 +217,18 @@ void Server::run()
 
 void Server::processPollEvents()
 {
-    for (std::vector<pollfd>::iterator it = _fds.begin(); it != _fds.end(); ++it)
+    for (size_t i = 0; i < _fds.size(); i++)
     {
-        int fd = it->fd;
-        short events = it->revents;
+        int fd = _fds[i].fd;
+        short events = _fds[i].revents;
 
         if (events == 0)
             continue;
+        if (events & (POLLNVAL | POLLERR))
+        {
+            _pending_remove.push_back(fd);
+            continue;
+        }
 
         // =========================
         // NEW CONNECTION
@@ -245,7 +250,7 @@ void Server::processPollEvents()
         // =========================
         // ERRORS
         // =========================
-        if (events & (POLLERR | POLLHUP | POLLNVAL))
+        if (events & (POLLHUP))
             _pending_remove.push_back(fd);
     }
 }
@@ -525,13 +530,24 @@ void Server::handleClientRead(int fd)
     c.request._file_path = file_path;
 
     send_file(fd, c.request._file_path, c.request._request_id);
-
-    _pending_remove.push_back(fd);
+    return ;
 }
 
 // ============================
 // WRITE CLIENT
 // ============================
+
+void Server::enableWriteEvent(int fd)
+{
+	for (size_t i = 0; i < _fds.size(); i++)
+	{
+		if (_fds[i].fd == fd)
+		{
+			_fds[i].events |= POLLOUT;
+			return;
+		}
+	}
+}
 
 void Server::handleClientWrite(int fd)
 {

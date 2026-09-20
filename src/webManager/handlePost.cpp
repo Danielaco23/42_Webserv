@@ -169,7 +169,7 @@ int save_multipart_files(const std::string &body, const std::string &boundary, c
     size_t part_start = body.find(marker);
     if (part_start == std::string::npos)
         return 0;
-
+    std::cout << std::endl << "body:" << std::endl << "|" << body << "|" << std::endl;
     while (part_start != std::string::npos)
     {
         part_start += marker.size();
@@ -183,18 +183,18 @@ int save_multipart_files(const std::string &body, const std::string &boundary, c
         size_t part_end = body.find(marker, part_start);
         if (part_end == std::string::npos)
             break;
+        if (part_end > 0 && body[part_end - 1] == '-')
+            part_end --;
+        part_end --;
+        while (part_end > part_start && body[part_end + 1] == '-')
+            part_end --;
 
         std::string part = body.substr(part_start, part_end - part_start);
-
-       while (!part.empty() && (part[0] == '\r' || part[0] == '\n'))
-	   {
+        
+        /*while (!part.empty() && (part[0] == '\r' || part[0] == '\n'))
 			part.erase(0, 1);
-		}
-
 		while (!part.empty() && (part[part.size() - 1] == '\r' || part[part.size() - 1] == '\n'))
-		{
-			part.erase(part.size() - 1, 1);
-		}
+			part.erase(part.size() - 1, 1);*/
 
         std::string filename;
         std::string content;
@@ -210,7 +210,6 @@ int save_multipart_files(const std::string &body, const std::string &boundary, c
 
         part_start = part_end;
     }
-
     return saved_files;
 }
 

@@ -302,7 +302,7 @@
       const formData = new FormData();
       // server may expect the field name 'files' or 'file' — adjust if needed
       formData.append('files', file, file.name);
-
+      console.log(file);
       if (file._ui && file._ui.bar)
         file._ui.bar.style.width = '0%';
 

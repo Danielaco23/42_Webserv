@@ -56,6 +56,7 @@ private:
     void handleClientRead(int fd);
     void handleClientWrite(int fd);
     void removeClient(int fd);
+    void enableWriteEvent(int fd);
 
     void handle_post_upload(int client_fd,
                             const std::string &path,
