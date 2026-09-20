@@ -1,5 +1,4 @@
 #include "Server.hpp"
-#include <cerrno>
 #include <limits.h>
 #include <algorithm>
 #include <cctype>

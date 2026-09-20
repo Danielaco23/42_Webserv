@@ -2,7 +2,6 @@
 #include <fstream>
 #include <sys/stat.h>
 #include <cctype>
-#include <cerrno>
 
 static std::string to_lower_copy(const std::string &value)
 {
@@ -102,46 +101,6 @@ static bool is_suspicious_raw_filename(const std::string &raw_name)
 	return false;
 }
 
-/**
- * @brief Reads the full body of a POST request from the socket.
- * @param client_fd Socket file descriptor.
- * @param content_length Expected number of bytes to read.
- * @return Body content as a string.
-
-std::string read_request_body(int client_fd, size_t content_length)
-{
-	std::string body;
-	const size_t chunk_size = 8192;
-	char buffer[chunk_size];
-	size_t remaining = content_length;
-
-	while (remaining > 0)
-	{
-		size_t to_read = chunk_size;
-		if (remaining < chunk_size)
-			to_read = remaining;
-		ssize_t n = recv(client_fd, buffer, to_read, 0);
-		if (n < 0)
-		{
-			if (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK)
-				break;
-			break;
-		}
-		if (n == 0)
-			break;
-		body.append(buffer, n);
-		remaining -= n;
-	}
-	return body;
-}*/
-
-/**
- * @brief Saves uploaded file to the filesystem.
- * @param www_root Document root directory.
- * @param filename Original filename from upload.
- * @param content File content data.
- * @return true if saved successfully, false otherwise.
- */
 bool save_uploaded_file(const std::string &www_root, const std::string &filename, const std::string &content)
 {
 	if (is_suspicious_raw_filename(filename))
