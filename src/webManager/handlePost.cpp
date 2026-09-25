@@ -1,7 +1,7 @@
 #include "../includes/Server.hpp"
 
 // ===== Responses =====
-static void respond_upload_success(int client_fd)
+static void respond_upload_success(Server &server, int client_fd)
 {
 	std::string response =
 		"HTTP/1.1 200 OK\r\n"
@@ -10,15 +10,23 @@ static void respond_upload_success(int client_fd)
 		"Connection: close\r\n\r\n"
 		"Files uploaded.\n";
 
-	send(client_fd, response.c_str(), response.size(), 0);
-	close(client_fd);
+    std::map<int, Client>::iterator it;
+
+    it = server.getClients().find(client_fd);
+    if (it == server.getClients().end())
+        return;
+
+    it->second.writeBuffer = response;
+    it->second.state = WRITING;
+    server.enableWriteEvent(client_fd);
 }
 
 static void respond_text_error(
-	int client_fd,
-	int status,
-	const std::string &title,
-	const std::string &message
+    Server &server,
+    int client_fd,
+    int status,
+    const std::string &title,
+    const std::string &message
 )
 {
 	std::ostringstream response;
@@ -37,8 +45,15 @@ static void respond_text_error(
 
 	std::string out = response.str();
 
-	send(client_fd, out.c_str(), out.size(), 0);
-	close(client_fd);
+    std::map<int, Client>::iterator it;
+
+    it = server.getClients().find(client_fd);
+    if (it == server.getClients().end())
+        return;
+
+    it->second.writeBuffer = out;
+    it->second.state = WRITING;
+    server.enableWriteEvent(client_fd);
 }
 
 // ===== Multipart parsing =====
@@ -237,6 +252,7 @@ void Server::handle_post_upload(
     if (!split_headers_and_body(request, headers_part, buffered_body))
     {
         respond_text_error(
+            *this,
             client_fd,
             400,
             "Bad Request",
@@ -251,6 +267,7 @@ void Server::handle_post_upload(
         && headers_part.find("Content-Length:") == std::string::npos)
     {
         respond_text_error(
+            *this,
             client_fd,
             411,
             "Length Required",
@@ -262,6 +279,7 @@ void Server::handle_post_upload(
     if (content_length > max_body_size)
     {
         respond_text_error(
+            *this,
             client_fd,
             413,
             "Payload Too Large",
@@ -276,6 +294,7 @@ void Server::handle_post_upload(
     if (body.size() < content_length)
     {
         respond_text_error(
+            *this,
             client_fd,
             400,
             "Bad Request",
@@ -300,6 +319,7 @@ void Server::handle_post_upload(
     if (boundary.empty())
     {
         respond_text_error(
+            *this,
             client_fd,
             400,
             "Bad Request",
@@ -317,6 +337,7 @@ void Server::handle_post_upload(
     if (saved_files <= 0)
     {
         respond_text_error(
+            *this,
             client_fd,
             400,
             "Bad Request",
@@ -325,5 +346,5 @@ void Server::handle_post_upload(
         return;
     }
 
-    respond_upload_success(client_fd);
+    respond_upload_success(*this, client_fd);
 }

@@ -56,7 +56,7 @@ private:
     void handleClientRead(int fd);
     void handleClientWrite(int fd);
     void removeClient(int fd);
-    void enableWriteEvent(int fd);
+    
 
     void handle_post_upload(int client_fd,
                             const std::string &path,
@@ -71,6 +71,9 @@ private:
 public:
     Server(const std::vector<Config> &configs);
     ~Server();
+
+    std::map<int, Client> &getClients();
+    void enableWriteEvent(int fd);
 
     void initSocket();
     void initVariables();

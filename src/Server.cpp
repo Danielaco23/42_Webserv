@@ -11,6 +11,7 @@ volatile sig_atomic_t g_running = 1;
 
 Server::Server(const std::vector<Config> &configs)
 {
+    
     for (size_t i = 0; i < configs.size(); i++)
     {
         ListeningSocket ls;
@@ -18,6 +19,11 @@ Server::Server(const std::vector<Config> &configs)
         ls.fd = -1;
         _servers.push_back(ls);
     }
+}
+
+std::map<int, Client> &Server::getClients()
+{
+	    return _clients;
 }
 
 Server::~Server()
@@ -381,7 +387,7 @@ void Server::handleClientRead(int fd)
 
     if (bytes < 0)
     {
-        _pending_remove.push_back(fd);
+        //_pending_remove.push_back(fd);
         return;
     }
 
@@ -410,7 +416,7 @@ void Server::handleClientRead(int fd)
 
     if (!check_response(*this, c.request))
     {
-        _pending_remove.push_back(fd);
+        //_pending_remove.push_back(fd);
         return;
     }
 
@@ -419,7 +425,6 @@ void Server::handleClientRead(int fd)
         send_error_page(fd, 400, "Bad Request",
             "Malformed request line.",
             c.request._request_id);
-        _pending_remove.push_back(fd);
         return;
     }
 
@@ -430,7 +435,7 @@ void Server::handleClientRead(int fd)
                 "CGI handler failed.",
                 c.request._request_id);
 
-        _pending_remove.push_back(fd);
+        //_pending_remove.push_back(fd);
         return;
     }
 
@@ -443,7 +448,7 @@ void Server::handleClientRead(int fd)
         send_error_page(fd, 500, "Internal Server Error",
             "Invalid server configuration.",
             c.request._request_id);
-        _pending_remove.push_back(fd);
+        //_pending_remove.push_back(fd);
         return;
     }
 
@@ -462,7 +467,7 @@ void Server::handleClientRead(int fd)
         root,
         cfg.get_client_max_body_size()
         );
-        _pending_remove.push_back(fd);
+        //_pending_remove.push_back(fd);
         return;
     }
 
@@ -475,7 +480,7 @@ void Server::handleClientRead(int fd)
         else
             send_error_page(fd, 404, "Not Found", "File not found.", c.request._request_id);
 
-        _pending_remove.push_back(fd);
+        //_pending_remove.push_back(fd);
         return;
     }
 
@@ -485,15 +490,14 @@ void Server::handleClientRead(int fd)
             "Only GET, POST and DELETE supported.",
             c.request._request_id);
 
-        _pending_remove.push_back(fd);
+        //_pending_remove.push_back(fd);
         return;
     }
 
     if (c.request._path == "/uploads")
     {
-        handle_uploads_listing(fd, root);
-        _pending_remove.push_back(fd);
-        return;
+	    handle_uploads_listing(fd, root);
+	    return;
     }
 
     // =========================
@@ -511,7 +515,7 @@ void Server::handleClientRead(int fd)
             "Invalid path.",
             c.request._request_id);
 
-        _pending_remove.push_back(fd);
+        //_pending_remove.push_back(fd);
         return;
     }
 

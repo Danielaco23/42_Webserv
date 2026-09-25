@@ -9,18 +9,6 @@
 #include <vector>
 #include <fcntl.h>
 
-static bool send_response(int client_fd, const std::string &response)
-{
-	ssize_t sent;
-
-	sent = send(client_fd, response.c_str(), response.size(), 0);
-	if (sent < 0)
-		return false;
-	if (static_cast<size_t>(sent) != response.size())
-		return false;
-	return true;
-}
-
 static std::string size_to_string(size_t value)
 {
 	std::ostringstream oss;
@@ -28,7 +16,8 @@ static std::string size_to_string(size_t value)
 	return oss.str();
 }
 
-static bool parse_first_line_target(const std::string &request, std::string &target)
+static bool parse_first_line_target(const std::string &request,
+									std::string &target)
 {
 	size_t line_end = request.find("\r\n");
 	if (line_end == std::string::npos)
@@ -45,9 +34,12 @@ static bool parse_first_line_target(const std::string &request, std::string &tar
 	return true;
 }
 
-static bool parse_cgi_target(const std::string &request, std::string &script_path, std::string &query_string)
+static bool parse_cgi_target(const std::string &request,
+							 std::string &script_path,
+							 std::string &query_string)
 {
 	std::string target;
+
 	if (!parse_first_line_target(request, target))
 		return false;
 
@@ -73,9 +65,11 @@ bool is_cgi_path(const std::string &path)
 		return false;
 	if (path.find("/cgi-bin/") == 0)
 		return true;
-	if (path.size() >= 3 && path.compare(path.size() - 3, 3, ".py") == 0)
+	if (path.size() >= 3
+		&& path.compare(path.size() - 3, 3, ".py") == 0)
 		return true;
-	if (path.size() >= 3 && path.compare(path.size() - 3, 3, ".sh") == 0)
+	if (path.size() >= 3
+		&& path.compare(path.size() - 3, 3, ".sh") == 0)
 		return true;
 	return false;
 }
@@ -83,6 +77,7 @@ bool is_cgi_path(const std::string &path)
 static std::string choose_interpreter(const std::string &script_path)
 {
 	size_t dot = script_path.rfind('.');
+
 	if (dot == std::string::npos)
 		return "";
 
@@ -104,20 +99,32 @@ static std::string read_cgi_output(int out_fd)
 	while (true)
 	{
 		ssize_t n = read(out_fd, buffer, sizeof(buffer));
+
 		if (n <= 0)
 			break;
+
 		output.append(buffer, n);
 	}
 	return output;
 }
 
-static void add_env(std::vector<std::string> &env, const std::string &key, const std::string &value)
+static void add_env(std::vector<std::string> &env,
+					const std::string &key,
+					const std::string &value)
 {
 	env.push_back(key + "=" + value);
 }
 
-static void send_cgi_http_response(int client_fd, const std::string &cgi_output)
+static void set_cgi_response(Server &server,
+							 int client_fd,
+							 const std::string &cgi_output)
 {
+	std::map<int, Client>::iterator it;
+
+	it = server.getClients().find(client_fd);
+	if (it == server.getClients().end())
+		return;
+
 	std::string body = cgi_output;
 
 	std::string response =
@@ -126,14 +133,13 @@ static void send_cgi_http_response(int client_fd, const std::string &cgi_output)
 		"Content-Length: " + size_to_string(body.size()) + "\r\n"
 		"Connection: close\r\n\r\n" + body;
 
-	send_response(client_fd, response);
-	close(client_fd);
+	it->second.writeBuffer = response;
+	it->second.state = WRITING;
+	server.enableWriteEvent(client_fd);
 }
 
 bool handle_cgi_request(Server &server, HttpRequest &request_data)
 {
-	(void)server;
-
 	std::string script_path;
 	std::string query_string;
 
@@ -153,26 +159,41 @@ bool handle_cgi_request(Server &server, HttpRequest &request_data)
 			"Content-Length: " + size_to_string(body.size()) + "\r\n"
 			"Connection: close\r\n\r\n" + body;
 
-		send_response(request_data._client_fd, response);
-		close(request_data._client_fd);
+		std::map<int, Client>::iterator it;
+
+		it = server.getClients().find(request_data._client_fd);
+		if (it != server.getClients().end())
+		{
+			it->second.writeBuffer = response;
+			it->second.state = WRITING;
+			server.enableWriteEvent(request_data._client_fd);
+		}
 		return true;
 	}
 
-	if (request_data._method != "GET" &&
-		request_data._method != "POST" &&
-		request_data._method != "DELETE")
+	if (request_data._method != "GET"
+		&& request_data._method != "POST"
+		&& request_data._method != "DELETE")
 	{
 		std::string msg =
 			"HTTP/1.1 405 Method Not Allowed\r\n"
 			"Content-Length: 0\r\n"
 			"Connection: close\r\n\r\n";
 
-		send_response(request_data._client_fd, msg);
-		close(request_data._client_fd);
+		std::map<int, Client>::iterator it;
+
+		it = server.getClients().find(request_data._client_fd);
+		if (it != server.getClients().end())
+		{
+			it->second.writeBuffer = msg;
+			it->second.state = WRITING;
+			server.enableWriteEvent(request_data._client_fd);
+		}
 		return true;
 	}
 
 	std::string interpreter = choose_interpreter(script_path);
+
 	if (interpreter.empty())
 	{
 		std::string msg =
@@ -180,14 +201,22 @@ bool handle_cgi_request(Server &server, HttpRequest &request_data)
 			"Content-Length: 0\r\n"
 			"Connection: close\r\n\r\n";
 
-		send_response(request_data._client_fd, msg);
-		close(request_data._client_fd);
+		std::map<int, Client>::iterator it;
+
+		it = server.getClients().find(request_data._client_fd);
+		if (it != server.getClients().end())
+		{
+			it->second.writeBuffer = msg;
+			it->second.state = WRITING;
+			server.enableWriteEvent(request_data._client_fd);
+		}
 		return true;
 	}
 
 	std::string fs_script = "." + script_path;
 
 	struct stat st;
+
 	if (stat(fs_script.c_str(), &st) != 0)
 	{
 		server.send_error_page(request_data._client_fd, 404,
@@ -208,6 +237,7 @@ bool handle_cgi_request(Server &server, HttpRequest &request_data)
 	}
 
 	pid_t pid = fork();
+
 	if (pid < 0)
 	{
 		server.send_error_page(request_data._client_fd, 500,
@@ -225,15 +255,19 @@ bool handle_cgi_request(Server &server, HttpRequest &request_data)
 		close(out_pipe[0]);
 
 		std::vector<std::string> env;
+
 		add_env(env, "REQUEST_METHOD", request_data._method);
 		add_env(env, "QUERY_STRING", query_string);
 
 		std::vector<char *> envp;
+
 		for (size_t i = 0; i < env.size(); i++)
 			envp.push_back(const_cast<char *>(env[i].c_str()));
+
 		envp.push_back(NULL);
 
 		char *argv[3];
+
 		argv[0] = const_cast<char *>(interpreter.c_str());
 		argv[1] = const_cast<char *>(fs_script.c_str());
 		argv[2] = NULL;
@@ -246,8 +280,12 @@ bool handle_cgi_request(Server &server, HttpRequest &request_data)
 	close(out_pipe[1]);
 
 	std::string cgi_output = read_cgi_output(out_pipe[0]);
+
 	close(out_pipe[0]);
 
-	send_cgi_http_response(request_data._client_fd, cgi_output);
+	set_cgi_response(server,
+		request_data._client_fd,
+		cgi_output);
+
 	return true;
 }

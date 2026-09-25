@@ -10,26 +10,28 @@ std::string build_uploads_json(const std::string &uploads_dir);
  * @param client_fd Socket file descriptor for the client connection.
  * @param www_root Root directory where uploads are stored.
  */
-void Server::handle_uploads_listing(int client_fd, const std::string &www_root)
+void Server::handle_uploads_listing(int client_fd,
+                                    const std::string &www_root)
 {
-    std::string uploads_dir;
-    if (www_root.empty())
-        uploads_dir = "www/uploads";
-    else
-        uploads_dir = www_root + "/uploads";
+	std::map<int, Client>::iterator it = _clients.find(client_fd);
+	if (it == _clients.end())
+		return;
 
-    std::string body = build_uploads_json(uploads_dir);
+	std::string uploads_dir;
+	if (www_root.empty())
+		uploads_dir = "www/uploads";
+	else
+		uploads_dir = www_root + "/uploads";
 
-    std::ostringstream headers;
+	std::string body = build_uploads_json(uploads_dir);
+	std::ostringstream headers;
 
-    headers << "HTTP/1.1 200 OK\r\n"
-            << "Content-Type: application/json; charset=UTF-8\r\n"
-            << "Content-Length: " << body.size() << "\r\n"
-            << "Connection: close\r\n\r\n";
+	headers << "HTTP/1.1 200 OK\r\n"
+			<< "Content-Type: application/json; charset=UTF-8\r\n"
+			<< "Content-Length: " << body.size() << "\r\n"
+			<< "Connection: close\r\n\r\n";
 
-    std::string response = headers.str() + body;
-
-    send(client_fd, response.c_str(), response.size(), 0);
-
-    close(client_fd);
+	it->second.writeBuffer = headers.str() + body;
+	it->second.state = WRITING;
+	enableWriteEvent(client_fd);
 }
