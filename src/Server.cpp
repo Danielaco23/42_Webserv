@@ -230,12 +230,19 @@ void Server::processPollEvents()
 
         if (events == 0)
             continue;
+
         if (events & (POLLNVAL | POLLERR))
         {
             _pending_remove.push_back(fd);
             continue;
         }
 
+        if (isCgiPipe(fd))
+        {
+            if (events & (POLLIN | POLLHUP))
+                handleCgiRead(fd);
+            continue;
+        }
         // =========================
         // NEW CONNECTION
         // =========================
@@ -246,7 +253,6 @@ void Server::processPollEvents()
             else
                 handleClientRead(fd);
         }
-
         // =========================
         // WRITE
         // =========================
@@ -256,10 +262,11 @@ void Server::processPollEvents()
         // =========================
         // ERRORS
         // =========================
-        if (events & (POLLHUP))
+        if (events & POLLHUP)
             _pending_remove.push_back(fd);
     }
 }
+
 void Server::applyPendingChanges()
 {
     // =========================
@@ -274,8 +281,12 @@ void Server::applyPendingChanges()
     // REMOVE CLIENTS
     // =========================
     for (size_t i = 0; i < _pending_remove.size(); i++)
-        removeClient(_pending_remove[i]);
-
+    {
+        if (isCgiPipe(_pending_remove[i]))
+            removeCgiPipe(_pending_remove[i]);
+        else
+            removeClient(_pending_remove[i]);
+    }
     _pending_remove.clear();
 }
 
@@ -428,17 +439,6 @@ void Server::handleClientRead(int fd)
         return;
     }
 
-    if (is_cgi_path(c.request._path))
-    {
-        if (!handle_cgi_request(*this, c.request))
-            send_error_page(fd, 500, "Internal Server Error",
-                "CGI handler failed.",
-                c.request._request_id);
-
-        //_pending_remove.push_back(fd);
-        return;
-    }
-
     // =========================
     // CONFIG LOCAL (CORE CLEAN)
     // =========================
@@ -456,7 +456,17 @@ void Server::handleClientRead(int fd)
 
     const std::string root = cfg.get_root();
     const std::string index = cfg.get_index();
-    
+
+    if (is_cgi_path(c.request._path))
+    {
+        if (!handle_cgi_request(*this, c.request, root))
+            send_error_page(fd, 500, "Internal Server Error",
+                "CGI handler failed.",
+                c.request._request_id);
+
+        //_pending_remove.push_back(fd);
+        return;
+    }
     if (c.request._method == "POST")
     {
        handle_post_upload(
@@ -602,6 +612,7 @@ void Server::removeClient(int fd)
 }
 
 
+
 // ============================
 // 
 // ============================
@@ -658,3 +669,44 @@ void Server::checkClientTimeouts()
     }
 }
 
+
+bool Server::isCgiPipe(int fd)
+{
+    // Check if the file descriptor is in the _cgi_pipes map
+    return _cgi_pipes.find(fd) != _cgi_pipes.end();
+}
+
+void Server::addCgiPipe(int pipe_fd, int client_fd)
+{
+    pollfd pfd;
+
+    pfd.fd = pipe_fd;
+    pfd.events = POLLIN;
+    pfd.revents = 0;
+
+    _cgi_pipes[pipe_fd] = client_fd;
+    _fds.push_back(pfd);
+}
+
+int Server::getCgiClient(int fd)
+{
+    std::map<int, int>::iterator it = _cgi_pipes.find(fd);
+    if (it == _cgi_pipes.end())
+        return -1;
+    return it->second;
+}
+
+void Server::removeCgiPipe(int fd)
+{
+    _cgi_pipes.erase(fd);
+    close(fd);
+
+    for (size_t i = 0; i < _fds.size(); i++)
+    {
+        if (_fds[i].fd == fd)
+        {
+            _fds.erase(_fds.begin() + i);
+            break;
+        }
+    }
+}

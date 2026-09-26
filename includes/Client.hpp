@@ -27,6 +27,7 @@ public:
 
     HttpRequest request;
 
+    std::string cgiOutput;
     time_t last_activity; 
 
     Client();

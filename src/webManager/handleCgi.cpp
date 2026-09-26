@@ -91,21 +91,41 @@ static std::string choose_interpreter(const std::string &script_path)
 	return "";
 }
 
-static std::string read_cgi_output(int out_fd)
+
+void Server::handleCgiRead(int fd)
 {
-	std::string output;
-	char buffer[4096];
+    char buffer[4096];
+    ssize_t n = read(fd, buffer, sizeof(buffer));
 
-	while (true)
-	{
-		ssize_t n = read(out_fd, buffer, sizeof(buffer));
+    int client_fd = getCgiClient(fd);
 
-		if (n <= 0)
-			break;
+    if (client_fd < 0)
+    {
+        _pending_remove.push_back(fd);
+        return;
+    }
 
-		output.append(buffer, n);
-	}
-	return output;
+    std::map<int, Client>::iterator it = _clients.find(client_fd);
+
+    if (it == _clients.end())
+    {
+        _pending_remove.push_back(fd);
+        return;
+    }
+
+    if (n > 0)
+    {
+        it->second.cgiOutput.append(buffer, n);
+        return;
+    }
+
+    if (n == 0)
+    {
+       finishCgi(fd);
+        return;
+    }
+
+    _pending_remove.push_back(fd);
 }
 
 static void add_env(std::vector<std::string> &env,
@@ -115,30 +135,42 @@ static void add_env(std::vector<std::string> &env,
 	env.push_back(key + "=" + value);
 }
 
-static void set_cgi_response(Server &server,
-							 int client_fd,
-							 const std::string &cgi_output)
+void Server::finishCgi(int pipe_fd)
 {
-	std::map<int, Client>::iterator it;
+    int client_fd = getCgiClient(pipe_fd);
 
-	it = server.getClients().find(client_fd);
-	if (it == server.getClients().end())
-		return;
+    if (client_fd < 0)
+    {
+        _pending_remove.push_back(pipe_fd);
+        return;
+    }
 
-	std::string body = cgi_output;
+    std::map<int, Client>::iterator it = _clients.find(client_fd);
 
-	std::string response =
-		"HTTP/1.1 200 OK\r\n"
-		"Content-Type: text/html\r\n"
-		"Content-Length: " + size_to_string(body.size()) + "\r\n"
-		"Connection: close\r\n\r\n" + body;
+    if (it == _clients.end())
+    {
+        _pending_remove.push_back(pipe_fd);
+        return;
+    }
 
-	it->second.writeBuffer = response;
-	it->second.state = WRITING;
-	server.enableWriteEvent(client_fd);
+    std::string body = it->second.cgiOutput;
+
+    std::ostringstream response;
+
+    response << "HTTP/1.1 200 OK\r\n"
+             << "Content-Type: text/html\r\n"
+             << "Content-Length: " << body.size() << "\r\n"
+             << "Connection: close\r\n\r\n"
+             << body;
+
+    it->second.writeBuffer = response.str();
+    it->second.state = WRITING;
+
+    enableWriteEvent(client_fd);
+    _pending_remove.push_back(pipe_fd);
 }
 
-bool handle_cgi_request(Server &server, HttpRequest &request_data)
+bool handle_cgi_request(Server &server, HttpRequest &request_data, const std::string &root)
 {
 	std::string script_path;
 	std::string query_string;
@@ -213,7 +245,7 @@ bool handle_cgi_request(Server &server, HttpRequest &request_data)
 		return true;
 	}
 
-	std::string fs_script = "." + script_path;
+	std::string fs_script = root + script_path;
 
 	struct stat st;
 
@@ -278,14 +310,9 @@ bool handle_cgi_request(Server &server, HttpRequest &request_data)
 
 	close(in_pipe[0]);
 	close(out_pipe[1]);
+	close(in_pipe[1]);
 
-	std::string cgi_output = read_cgi_output(out_pipe[0]);
-
-	close(out_pipe[0]);
-
-	set_cgi_response(server,
-		request_data._client_fd,
-		cgi_output);
+	server.addCgiPipe(out_pipe[0], request_data._client_fd);
 
 	return true;
 }
