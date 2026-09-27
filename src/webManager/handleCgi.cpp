@@ -9,6 +9,19 @@
 #include <vector>
 #include <fcntl.h>
 
+
+static bool get_request_body(const std::string &request,
+                             std::string &body)
+{
+    size_t pos = request.find("\r\n\r\n");
+
+    if (pos == std::string::npos)
+        return false;
+
+    body = request.substr(pos + 4);
+    return true;
+}
+
 static std::string size_to_string(size_t value)
 {
 	std::ostringstream oss;
@@ -153,6 +166,20 @@ void Server::finishCgi(int pipe_fd)
         return;
     }
 
+	pid_t pid = -1;
+
+    std::map<int, pid_t>::iterator pid_it;
+    pid_it = _cgi_pids.find(pipe_fd);
+
+    if (pid_it != _cgi_pids.end())
+    {
+        pid = pid_it->second;
+        _cgi_pids.erase(pid_it);
+    }
+
+    if (pid > 0)
+        waitpid(pid, NULL, WNOHANG);
+
     std::string body = it->second.cgiOutput;
 
     std::ostringstream response;
@@ -177,6 +204,11 @@ bool handle_cgi_request(Server &server, HttpRequest &request_data, const std::st
 
 	if (!parse_cgi_target(request_data._req, script_path, query_string))
 		return false;
+
+	std::string body;
+
+	if (!get_request_body(request_data._req, body))
+		body = "";
 
 	if (!is_cgi_path(script_path))
 		return false;
@@ -310,9 +342,21 @@ bool handle_cgi_request(Server &server, HttpRequest &request_data, const std::st
 
 	close(in_pipe[0]);
 	close(out_pipe[1]);
-	close(in_pipe[1]);
+
+	std::map<int, Client>::iterator it;
+
+	it = server.getClients().find(request_data._client_fd);
+
+	if (it != server.getClients().end())
+	{
+		it->second.cgiInput = body;
+		it->second.cgiInputPos = 0;
+	}
 
 	server.addCgiPipe(out_pipe[0], request_data._client_fd);
+	server.addCgiInputPipe(in_pipe[1], request_data._client_fd);
+	server.addCgiPid(out_pipe[0], pid);
 
 	return true;
 }
+

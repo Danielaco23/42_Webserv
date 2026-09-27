@@ -243,6 +243,14 @@ void Server::processPollEvents()
                 handleCgiRead(fd);
             continue;
         }
+
+        if (isCgiInputPipe(fd))
+        {
+            if (events & POLLOUT)
+                handleCgiWrite(fd);
+
+            continue;
+        }
         // =========================
         // NEW CONNECTION
         // =========================
@@ -282,11 +290,16 @@ void Server::applyPendingChanges()
     // =========================
     for (size_t i = 0; i < _pending_remove.size(); i++)
     {
-        if (isCgiPipe(_pending_remove[i]))
-            removeCgiPipe(_pending_remove[i]);
+        int fd = _pending_remove[i];
+
+        if (isCgiPipe(fd))
+            removeCgiPipe(fd);
+        else if (isCgiInputPipe(fd))
+            removeCgiInputPipe(fd);
         else
-            removeClient(_pending_remove[i]);
+            removeClient(fd);
     }
+
     _pending_remove.clear();
 }
 
@@ -688,6 +701,24 @@ void Server::addCgiPipe(int pipe_fd, int client_fd)
     _fds.push_back(pfd);
 }
 
+void Server::addCgiInputPipe(int pipe_fd, int client_fd)
+{
+    pollfd pfd;
+
+    pfd.fd = pipe_fd;
+    pfd.events = POLLOUT;
+    pfd.revents = 0;
+
+    _cgi_input_pipes[pipe_fd] = client_fd;
+    _fds.push_back(pfd);
+}
+
+
+void Server::addCgiPid(int pipe_fd, pid_t pid)
+{
+    _cgi_pids[pipe_fd] = pid;
+}
+
 int Server::getCgiClient(int fd)
 {
     std::map<int, int>::iterator it = _cgi_pipes.find(fd);
@@ -699,6 +730,7 @@ int Server::getCgiClient(int fd)
 void Server::removeCgiPipe(int fd)
 {
     _cgi_pipes.erase(fd);
+    _cgi_pids.erase(fd);
     close(fd);
 
     for (size_t i = 0; i < _fds.size(); i++)
@@ -708,5 +740,76 @@ void Server::removeCgiPipe(int fd)
             _fds.erase(_fds.begin() + i);
             break;
         }
+    }
+}
+
+void Server::removeCgiInputPipe(int fd)
+{
+    _cgi_input_pipes.erase(fd);
+    close(fd);
+
+    for (size_t i = 0; i < _fds.size(); i++)
+    {
+        if (_fds[i].fd == fd)
+        {
+            _fds.erase(_fds.begin() + i);
+            break;
+        }
+    }
+}
+
+
+bool Server::isCgiInputPipe(int fd)
+{
+    return _cgi_input_pipes.find(fd) != _cgi_input_pipes.end();
+}
+
+void Server::handleCgiWrite(int fd)
+{
+    std::map<int, int>::iterator pipe_it;
+    pipe_it = _cgi_input_pipes.find(fd);
+
+    if (pipe_it == _cgi_input_pipes.end())
+        return;
+
+    int client_fd = pipe_it->second;
+
+    std::map<int, Client>::iterator client_it;
+    client_it = _clients.find(client_fd);
+
+    if (client_it == _clients.end())
+    {
+        _pending_remove.push_back(fd);
+        return;
+    }
+
+    Client &client = client_it->second;
+
+    if (client.cgiInputPos >= client.cgiInput.size())
+    {
+        close(fd);
+        _cgi_input_pipes.erase(pipe_it);
+        return;
+    }
+
+    ssize_t sent = write(
+        fd,
+        client.cgiInput.c_str() + client.cgiInputPos,
+        client.cgiInput.size() - client.cgiInputPos
+    );
+
+    if (sent > 0)
+    {
+        client.cgiInputPos += sent;
+
+        if (client.cgiInputPos >= client.cgiInput.size())
+        {
+            close(fd);
+            _cgi_input_pipes.erase(pipe_it);
+        }
+    }
+    else if (sent == 0)
+    {
+        _pending_remove.push_back(fd);
     }
 }

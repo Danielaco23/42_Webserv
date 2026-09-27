@@ -47,6 +47,8 @@ private:
 
     std::map<int, Client> _clients;
     std::map<int, int> _cgi_pipes;
+    std::map<int, int> _cgi_input_pipes;
+    std::map<int, pid_t> _cgi_pids;
 
     std::vector<pollfd> _pending_add;
     std::vector<int> _pending_remove;
@@ -62,7 +64,13 @@ private:
     //CGI
     int getCgiClient(int fd);
     void handleCgiRead(int fd);
+    void finishCgi(int pipe_fd);
     bool isCgiPipe(int fd);
+    bool isCgiInputPipe(int fd);
+    void handleCgiWrite(int fd);
+    void removeCgiPipe(int fd);
+    void removeCgiInputPipe(int fd);
+
 
 
     void handle_post_upload(int client_fd,
@@ -106,9 +114,11 @@ public:
                         const std::string &request_id);
 
     void checkClientTimeouts();
-    void removeCgiPipe(int fd);
+    
     void addCgiPipe(int pipe_fd, int client_fd);
-    void finishCgi(int pipe_fd);
+    void addCgiInputPipe(int pipe_fd, int client_fd);
+    void addCgiPid(int pipe_fd, pid_t pid);
+
 };
 
 void signalHandler(int signal);

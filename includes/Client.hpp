@@ -28,6 +28,9 @@ public:
     HttpRequest request;
 
     std::string cgiOutput;
+    std::string cgiInput;
+    size_t cgiInputPos;
+
     time_t last_activity; 
 
     Client();
