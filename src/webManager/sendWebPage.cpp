@@ -152,22 +152,56 @@ static void add_not_found_suggestions(std::string &html)
  * @param client_fd Socket file descriptor for the client connection.
  * @param filepath Absolute or relative path to the file to serve.
  * @param request_id Identifier used for logging and tracing the request.
+ * @param cfg Server config.
  */
-void Server::send_file(int client_fd, const std::string &filepath, const std::string &request_id)
+void Server::send_file(int client_fd, const std::string &filepath, const std::string &request_id, Config &cfg)
 {
     std::map<int, Client>::iterator it = this->_clients.find(client_fd);
     if (it == this->_clients.end())
         return;
 
+    size_t i = 0;
+    for (i = 0; i < cfg.get_locations().size(); i++)
+    {
+        Location loc_check = cfg.get_locations()[i];
+        if (it->second.request._path.find(loc_check.get_path()) == 0)
+        {
+            break;
+        }
+    }
+    if (i == cfg.get_locations().size())
+    {
+        send_error_page(client_fd, 404, "Not Found",
+            "No matching location found.",
+            it->second.request._request_id);
+        return;
+    }
+    const Location &curr_location = cfg.get_locations()[i];
+
+    if (it->second.request._method == "HEAD" && !curr_location.get_method(LOC_HEAD_INDEX))
+    {
+        send_error_page(client_fd, 405, "Method Not Allowed",
+            "HEAD method is not allowed for this location.",
+            it->second.request._request_id);
+        return;
+    }
+    if (it->second.request._method == "GET" && !curr_location.get_method(LOC_GET_INDEX))
+    {
+        send_error_page(client_fd, 405, "Method Not Allowed",
+            "GET method is not allowed for this location.",
+            it->second.request._request_id);
+        return;
+    }
+
     std::ifstream file(filepath.c_str(), std::ios::in | std::ios::binary);
     if (!file)
-	{
-		std::cerr << "Could not open "
-			<< filepath << " (" << request_id << ")\n";
-		send_error_page(client_fd, 404, "Not Found",
-			"The requested resource was not found.", request_id);
-		return;
-	}
+    {
+        std::cerr << "Could not open "
+            << filepath << " (" << request_id << ")\n";
+        send_error_page(client_fd, 404, "Not Found",
+            "The requested resource was not found.", request_id);
+        return;
+    }
 
     std::string body = read_stream(file);
     std::string mime = get_mime_type(filepath);
@@ -175,7 +209,9 @@ void Server::send_file(int client_fd, const std::string &filepath, const std::st
 
     // HEAD handling CORRECTO
     if (it->second.request._method == "HEAD")
+    {
         it->second.writeBuffer = headers;
+    }
     else
 		it->second.writeBuffer = headers + body;
 

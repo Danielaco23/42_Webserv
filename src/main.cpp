@@ -11,7 +11,7 @@ template <typename T>
  */
 void	print_cout(T printable)
 {
-	std::cout << printable << std::endl;
+// std::cout << printable << std::endl;
 }
 
 template <typename T>

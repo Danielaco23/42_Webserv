@@ -1,47 +1,47 @@
 
 #include "Location.hpp"
 
-std::string	Location::get_path(void)
+std::string	Location::get_path(void) const
 {
 	return (this->_path);
 }
-std::string	Location::get_root(void)
+std::string	Location::get_root(void) const
 {
 	return (this->_root);
 }
-bool	Location::get_autoindex(void)
+bool	Location::get_autoindex(void) const
 {
 	return (this->_autoindex);
 }
-std::string	Location::get_index(void)
+std::string	Location::get_index(void) const
 {
 	return (this->_index);
 }
-bool	Location::get_methods(int pos)
+bool	Location::get_method(int pos) const
 {
 	return (this->_methods[pos]);
 }
-std::string	Location::get_return(void)
+std::string	Location::get_return(void) const
 {
 	return (this->_return);
 }
-std::string	Location::get_alias(void)
+std::string	Location::get_alias(void) const
 {
 	return (this->_alias);
 }
-std::vector<std::string>	Location::get_cgi_paths(void)
+std::vector<std::string>	Location::get_cgi_paths(void) const
 {
 	return (this->_cgi_paths);
 }
-std::vector<std::string>	Location::get_cgi_extensions(void)
+std::vector<std::string>	Location::get_cgi_extensions(void) const
 {
 	return (this->_cgi_extensions);
 }
-unsigned long	Location::get_client_max_body_size(void)
+unsigned long	Location::get_client_max_body_size(void) const
 {
 	return (this->_client_max_body_size);
 }
-t_loc_ext_paths	Location::get_ext_paths(void)
+t_loc_ext_paths	Location::get_ext_paths(void) const
 {
 	return (this->_ext_paths);
 }

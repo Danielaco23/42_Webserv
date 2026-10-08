@@ -128,7 +128,7 @@ bool save_uploaded_file(const std::string &www_root, const std::string &filename
 	
 	out.write(content.data(), content.size());
 	out.close();
-	std::cout << "Saved upload: " << file_path << " (" << content.size() << " bytes)" << std::endl;
+// std::cout << "Saved upload: " << file_path << " (" << content.size() << " bytes)" << std::endl;
 	return true;
 }
 
@@ -192,7 +192,7 @@ bool extract_multipart_file(
  */
 int process_uploads(const std::string &body, const std::string &boundary, const std::string &www_root)
 {
-	std::cout << "UPLOAD SIGNAL ARRIVED" << std::endl;
+// std::cout << "UPLOAD SIGNAL ARRIVED" << std::endl;
 	int count = 0;
 	if (boundary.empty())
 		return count;
@@ -209,7 +209,7 @@ int process_uploads(const std::string &body, const std::string &boundary, const 
 		std::string filename, content;
 		if (extract_multipart_file(part, filename, content))
 		{
-			std::cout << "Processing uploaded file: " << filename << " (" << content.size() << " bytes)" << std::endl;
+		// std::cout << "Processing uploaded file: " << filename << " (" << content.size() << " bytes)" << std::endl;
 			if (save_uploaded_file(www_root, filename, content))
 				++count;
 		}

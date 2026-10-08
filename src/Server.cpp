@@ -2,6 +2,7 @@
 #include "../includes/Client.hpp"
 #include <csignal>
 #include <cerrno>
+#include <vector>
 
 volatile sig_atomic_t g_running = 1;
 
@@ -405,6 +406,7 @@ static bool request_is_complete(const std::string &request)
 
 void Server::handleClientRead(int fd)
 {
+    std::cout << "handleClientRead called for fd: " << fd << std::endl;
     char	buffer[1024];
 
     int		bytes = recv(fd, buffer, sizeof(buffer) - 1, MSG_DONTWAIT);
@@ -470,6 +472,22 @@ void Server::handleClientRead(int fd)
     const std::string root = cfg.get_root();
     const std::string index = cfg.get_index();
 
+    size_t i = 0;
+    for (i = 0; i < cfg.get_locations().size(); i++)
+    {
+        Location loc_check = cfg.get_locations()[i];
+        if (c.request._path.find(loc_check.get_path()) == 0)
+            break;
+    }
+    if (i == cfg.get_locations().size())
+    {
+        send_error_page(fd, 404, "Not Found",
+            "No matching location found.",
+            c.request._request_id);
+        return;
+    }
+    const Location &curr_location = cfg.get_locations()[i];
+
     if (is_cgi_path(c.request._path))
     {
         if (!handle_cgi_request(*this, c.request, root))
@@ -482,7 +500,15 @@ void Server::handleClientRead(int fd)
     }
     if (c.request._method == "POST")
     {
-       handle_post_upload(
+        if (!curr_location.get_method(LOC_POST_INDEX))
+        {
+            send_error_page(fd, 405, "Method Not Allowed",
+                "POST method is not allowed for this location.",
+                c.request._request_id);
+            return;
+        }
+
+        handle_post_upload(
         fd,
         c.request._path,
         c.request._request_id,
@@ -490,12 +516,22 @@ void Server::handleClientRead(int fd)
         root,
         cfg.get_client_max_body_size()
         );
+
         //_pending_remove.push_back(fd);
         return;
     }
 
     if (c.request._method == "DELETE")
     {
+        if (!curr_location.get_method(LOC_DELETE_INDEX))
+        {
+            send_error_page(fd, 405, "Method Not Allowed",
+                "DELETE method is not allowed for this location.",
+                c.request._request_id);
+
+            //_pending_remove.push_back(fd);
+            return;
+        }
         std::string fullPath = root + c.request._path;
 
         if (std::remove(fullPath.c_str()) == 0)
@@ -556,7 +592,7 @@ void Server::handleClientRead(int fd)
 
     c.request._file_path = file_path;
 
-    send_file(fd, c.request._file_path, c.request._request_id);
+    send_file(fd, c.request._file_path, c.request._request_id, cfg);
     return ;
 }
 

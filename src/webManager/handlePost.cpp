@@ -249,6 +249,11 @@ void Server::handle_post_upload(
     std::string headers_part;
     std::string buffered_body;
 
+    if (request.empty())
+    {
+        respond_upload_success(*this, client_fd);
+        return;
+    }
     if (!split_headers_and_body(request, headers_part, buffered_body))
     {
         respond_text_error(
@@ -262,15 +267,18 @@ void Server::handle_post_upload(
     }
 
     size_t content_length = extract_content_length(headers_part);
-
+    
+    std::cout << "headers_part:" << std::endl << "|" << headers_part << "|" << std::endl;
+    std::cout << "buffered body size: " << buffered_body.size() << std::endl;
+    std::cout << "buffered body:" << buffered_body << std::endl;
     if (content_length == 0
         && headers_part.find("Content-Length:") == std::string::npos)
     {
         respond_text_error(
             *this,
             client_fd,
-            411,
-            "Length Required",
+            403,
+            "Forbidden",
             "Content-Length header required"
         );
         return;

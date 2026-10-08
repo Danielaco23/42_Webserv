@@ -43,17 +43,17 @@ class Location
 		Location					&operator=(const Location &other);
 		bool						operator==(const Location &other);
 
-		std::string					get_path(void);
-		std::string					get_root(void);
-		bool						get_autoindex(void);
-		std::string					get_index(void);
-		bool						get_methods(int pos);
-		std::string					get_return(void);
-		std::string					get_alias(void);
-		std::vector<std::string>	get_cgi_paths(void);
-		std::vector<std::string>	get_cgi_extensions(void);
-		unsigned long				get_client_max_body_size(void);
-		t_loc_ext_paths				get_ext_paths(void);
+		std::string					get_path(void) const;
+		std::string					get_root(void) const;
+		bool						get_autoindex(void) const;
+		std::string					get_index(void) const;
+		bool						get_method(int pos) const;
+		std::string					get_return(void) const;
+		std::string					get_alias(void) const;
+		std::vector<std::string>	get_cgi_paths(void) const;
+		std::vector<std::string>	get_cgi_extensions(void) const;
+		unsigned long				get_client_max_body_size(void) const;
+		t_loc_ext_paths				get_ext_paths(void) const;
 
 		void						set_path(std::string new_val);		
 		void						set_root(std::string new_val);		

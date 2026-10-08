@@ -105,7 +105,8 @@ public:
 
     void send_file(int client_fd,
                    const std::string &filepath,
-                   const std::string &request_id);
+                   const std::string &request_id,
+                   Config &cfg);
 
     void send_error_page(int client_fd,
                         int status,
