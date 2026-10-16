@@ -133,8 +133,8 @@ bool extract_multipart_file(
     std::string &filename,
     std::string &content);
 
-bool handle_cgi_request(Server &server, HttpRequest &request_data, const std::string &root);
-bool is_cgi_path(const std::string &path);
+bool handle_cgi_request(Server &server, HttpRequest &request_data, const std::string &root, const Location &location);
+bool is_cgi_path(const std::string &path, const Location &location);
 bool check_response(Server &server, HttpRequest &request_data);
 bool parse_request_line(HttpRequest &request_data);
 

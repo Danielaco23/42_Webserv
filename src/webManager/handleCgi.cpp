@@ -70,21 +70,49 @@ static bool parse_cgi_target(const std::string &request,
 	return true;
 }
 
-bool is_cgi_path(const std::string &path)
+bool is_cgi_path(const std::string &path, const Location &location)
 {
-	if (path == "/cgi-bin" || path == "/cgi-bin/")
-		return true;
-	if (path.find("..") != std::string::npos)
-		return false;
-	if (path.find("/cgi-bin/") == 0)
-		return true;
-	if (path.size() >= 3
-		&& path.compare(path.size() - 3, 3, ".py") == 0)
-		return true;
-	if (path.size() >= 3
-		&& path.compare(path.size() - 3, 3, ".sh") == 0)
-		return true;
-	return false;
+    std::vector<std::string> extensions;
+    std::vector<std::string> paths;
+    size_t i;
+
+    if (path.find("..") != std::string::npos)
+        return false;
+
+    if (path == "/cgi-bin" || path == "/cgi-bin/")
+        return true;
+
+    if (path.find("/cgi-bin/") == 0)
+        return true;
+
+    extensions = location.get_cgi_extensions();
+    for (i = 0; i < extensions.size(); i++)
+    {
+        if (path.size() >= extensions[i].size()
+            && path.compare(
+                path.size() - extensions[i].size(),
+                extensions[i].size(),
+                extensions[i]
+            ) == 0)
+            return true;
+    }
+
+    paths = location.get_cgi_paths();
+    for (i = 0; i < paths.size(); i++)
+    {
+        if (path.find(paths[i]) == 0)
+            return true;
+    }
+
+    if (path.size() >= 3
+        && path.compare(path.size() - 3, 3, ".py") == 0)
+        return true;
+
+    if (path.size() >= 3
+        && path.compare(path.size() - 3, 3, ".sh") == 0)
+        return true;
+
+    return false;
 }
 
 static std::string choose_interpreter(const std::string &script_path)
@@ -197,166 +225,260 @@ void Server::finishCgi(int pipe_fd)
     _pending_remove.push_back(pipe_fd);
 }
 
-bool handle_cgi_request(Server &server, HttpRequest &request_data, const std::string &root)
+bool handle_cgi_request(Server &server, HttpRequest &request_data,
+                        const std::string &root, const Location &location)
 {
-	std::string script_path;
-	std::string query_string;
+    std::string script_path;
+    std::string query_string;
 
-	if (!parse_cgi_target(request_data._req, script_path, query_string))
-		return false;
+    if (!parse_cgi_target(request_data._req, script_path, query_string))
+        return false;
 
-	std::string body;
+    std::string body;
 
-	if (!get_request_body(request_data._req, body))
-		body = "";
+    if (!get_request_body(request_data._req, body))
+        body = "";
 
-	if (!is_cgi_path(script_path))
-		return false;
+    if (script_path == "/cgi-bin" || script_path == "/cgi-bin/")
+    {
+        std::string response_body = "CGI endpoint ready\n";
+        std::string response;
 
-	if (script_path == "/cgi-bin" || script_path == "/cgi-bin/")
-	{
-		std::string body = "CGI endpoint ready\n";
+        response = "HTTP/1.1 200 OK\r\n";
+        response += "Content-Type: text/plain\r\n";
+        response += "Content-Length: ";
+        response += size_to_string(response_body.size());
+        response += "\r\nConnection: close\r\n\r\n";
+        response += response_body;
 
-		std::string response =
-			"HTTP/1.1 200 OK\r\n"
-			"Content-Type: text/plain\r\n"
-			"Content-Length: " + size_to_string(body.size()) + "\r\n"
-			"Connection: close\r\n\r\n" + body;
+        std::map<int, Client>::iterator it;
 
-		std::map<int, Client>::iterator it;
+        it = server.getClients().find(request_data._client_fd);
+        if (it != server.getClients().end())
+        {
+            it->second.writeBuffer = response;
+            it->second.state = WRITING;
+            server.enableWriteEvent(request_data._client_fd);
+        }
+        return true;
+    }
 
-		it = server.getClients().find(request_data._client_fd);
-		if (it != server.getClients().end())
-		{
-			it->second.writeBuffer = response;
-			it->second.state = WRITING;
-			server.enableWriteEvent(request_data._client_fd);
-		}
-		return true;
-	}
+    if (request_data._method != "GET"
+        && request_data._method != "POST"
+        && request_data._method != "DELETE")
+    {
+        std::string msg;
 
-	if (request_data._method != "GET"
-		&& request_data._method != "POST"
-		&& request_data._method != "DELETE")
-	{
-		std::string msg =
-			"HTTP/1.1 405 Method Not Allowed\r\n"
-			"Content-Length: 0\r\n"
-			"Connection: close\r\n\r\n";
+        msg = "HTTP/1.1 405 Method Not Allowed\r\n";
+        msg += "Content-Length: 0\r\n";
+        msg += "Connection: close\r\n\r\n";
 
-		std::map<int, Client>::iterator it;
+        std::map<int, Client>::iterator it;
 
-		it = server.getClients().find(request_data._client_fd);
-		if (it != server.getClients().end())
-		{
-			it->second.writeBuffer = msg;
-			it->second.state = WRITING;
-			server.enableWriteEvent(request_data._client_fd);
-		}
-		return true;
-	}
+        it = server.getClients().find(request_data._client_fd);
+        if (it != server.getClients().end())
+        {
+            it->second.writeBuffer = msg;
+            it->second.state = WRITING;
+            server.enableWriteEvent(request_data._client_fd);
+        }
+        return true;
+    }
 
-	std::string interpreter = choose_interpreter(script_path);
+    std::string interpreter;
+    std::string executable;
 
-	if (interpreter.empty())
-	{
-		std::string msg =
-			"HTTP/1.1 415 Unsupported Media Type\r\n"
-			"Content-Length: 0\r\n"
-			"Connection: close\r\n\r\n";
+    interpreter = choose_interpreter(script_path);
 
-		std::map<int, Client>::iterator it;
+    if (!interpreter.empty())
+    {
+        executable = interpreter;
+    }
+    else
+    {
+        std::vector<std::string> cgi_paths;
+        std::vector<std::string> cgi_extensions;
+        size_t i;
 
-		it = server.getClients().find(request_data._client_fd);
-		if (it != server.getClients().end())
-		{
-			it->second.writeBuffer = msg;
-			it->second.state = WRITING;
-			server.enableWriteEvent(request_data._client_fd);
-		}
-		return true;
-	}
+        cgi_paths = location.get_cgi_paths();
+        cgi_extensions = location.get_cgi_extensions();
 
-	std::string fs_script = root + script_path;
+        for (i = 0; i < cgi_extensions.size(); i++)
+        {
+            if (script_path.size() >= cgi_extensions[i].size()
+                && script_path.compare(
+                    script_path.size() - cgi_extensions[i].size(),
+                    cgi_extensions[i].size(),
+                    cgi_extensions[i]) == 0)
+            {
+                if (!cgi_paths.empty())
+                    executable = cgi_paths[0];
+                break;
+            }
+        }
+    }
 
-	struct stat st;
+    if (executable.empty())
+    {
+        std::string msg;
 
-	if (stat(fs_script.c_str(), &st) != 0)
-	{
-		server.send_error_page(request_data._client_fd, 404,
-			"Not Found", "CGI script not found.",
-			request_data._request_id);
-		return true;
-	}
+        msg = "HTTP/1.1 415 Unsupported Media Type\r\n";
+        msg += "Content-Length: 0\r\n";
+        msg += "Connection: close\r\n\r\n";
 
-	int in_pipe[2];
-	int out_pipe[2];
+        std::map<int, Client>::iterator it;
 
-	if (pipe(in_pipe) != 0 || pipe(out_pipe) != 0)
-	{
-		server.send_error_page(request_data._client_fd, 500,
-			"Internal Server Error", "Pipe error",
-			request_data._request_id);
-		return true;
-	}
+        it = server.getClients().find(request_data._client_fd);
+        if (it != server.getClients().end())
+        {
+            it->second.writeBuffer = msg;
+            it->second.state = WRITING;
+            server.enableWriteEvent(request_data._client_fd);
+        }
+        return true;
+    }
 
-	pid_t pid = fork();
+    std::string location_path;
+    std::string relative_path;
+    std::string fs_script;
 
-	if (pid < 0)
-	{
-		server.send_error_page(request_data._client_fd, 500,
-			"Internal Server Error", "Fork error",
-			request_data._request_id);
-		return true;
-	}
+    location_path = location.get_path();
 
-	if (pid == 0)
-	{
-		dup2(in_pipe[0], STDIN_FILENO);
-		dup2(out_pipe[1], STDOUT_FILENO);
+    if (location_path == "/")
+        relative_path = script_path;
+    else
+        relative_path = script_path.substr(location_path.size());
 
-		close(in_pipe[1]);
-		close(out_pipe[0]);
+    fs_script = root;
 
-		std::vector<std::string> env;
+    if (!relative_path.empty())
+    {
+        if (fs_script[fs_script.size() - 1] != '/'
+            && relative_path[0] != '/')
+            fs_script += "/";
 
-		add_env(env, "REQUEST_METHOD", request_data._method);
-		add_env(env, "QUERY_STRING", query_string);
+        fs_script += relative_path;
+    }
 
-		std::vector<char *> envp;
+    struct stat st;
 
-		for (size_t i = 0; i < env.size(); i++)
-			envp.push_back(const_cast<char *>(env[i].c_str()));
+    if (stat(fs_script.c_str(), &st) != 0)
+    {
+        server.send_error_page(request_data._client_fd, 404,
+            "Not Found", "CGI script not found.",
+            request_data._request_id);
+        return true;
+    }
 
-		envp.push_back(NULL);
+    int in_pipe[2];
+    int out_pipe[2];
 
-		char *argv[3];
+    if (pipe(in_pipe) != 0)
+    {
+        server.send_error_page(request_data._client_fd, 500,
+            "Internal Server Error", "Pipe error",
+            request_data._request_id);
+        return true;
+    }
 
-		argv[0] = const_cast<char *>(interpreter.c_str());
-		argv[1] = const_cast<char *>(fs_script.c_str());
-		argv[2] = NULL;
+    if (pipe(out_pipe) != 0)
+    {
+        close(in_pipe[0]);
+        close(in_pipe[1]);
+        server.send_error_page(request_data._client_fd, 500,
+            "Internal Server Error", "Pipe error",
+            request_data._request_id);
+        return true;
+    }
 
-		execve(interpreter.c_str(), argv, &envp[0]);
-		_exit(1);
-	}
+    if (fcntl(in_pipe[1], F_SETFL, O_NONBLOCK) < 0)
+    {
+        close(in_pipe[0]);
+        close(in_pipe[1]);
+        close(out_pipe[0]);
+        close(out_pipe[1]);
+        server.send_error_page(request_data._client_fd, 500,
+            "Internal Server Error", "fcntl error",
+            request_data._request_id);
+        return true;
+    }
 
-	close(in_pipe[0]);
-	close(out_pipe[1]);
+    if (fcntl(out_pipe[0], F_SETFL, O_NONBLOCK) < 0)
+    {
+        close(in_pipe[0]);
+        close(in_pipe[1]);
+        close(out_pipe[0]);
+        close(out_pipe[1]);
+        server.send_error_page(request_data._client_fd, 500,
+            "Internal Server Error", "fcntl error",
+            request_data._request_id);
+        return true;
+    }
 
-	std::map<int, Client>::iterator it;
+    pid_t pid = fork();
 
-	it = server.getClients().find(request_data._client_fd);
+    if (pid < 0)
+    {
+        close(in_pipe[0]);
+        close(in_pipe[1]);
+        close(out_pipe[0]);
+        close(out_pipe[1]);
+        server.send_error_page(request_data._client_fd, 500,
+            "Internal Server Error", "Fork error",
+            request_data._request_id);
+        return true;
+    }
 
-	if (it != server.getClients().end())
-	{
-		it->second.cgiInput = body;
-		it->second.cgiInputPos = 0;
-	}
+    if (pid == 0)
+    {
+        dup2(in_pipe[0], STDIN_FILENO);
+        dup2(out_pipe[1], STDOUT_FILENO);
 
-	server.addCgiPipe(out_pipe[0], request_data._client_fd);
-	server.addCgiInputPipe(in_pipe[1], request_data._client_fd);
-	server.addCgiPid(out_pipe[0], pid);
+        close(in_pipe[0]);
+        close(in_pipe[1]);
+        close(out_pipe[0]);
+        close(out_pipe[1]);
 
-	return true;
+        std::vector<std::string> env;
+
+        add_env(env, "REQUEST_METHOD", request_data._method);
+        add_env(env, "QUERY_STRING", query_string);
+        add_env(env, "SERVER_PROTOCOL", request_data._version);
+        add_env(env, "PATH_INFO", request_data._path);
+
+        std::vector<char *> envp;
+
+        for (size_t i = 0; i < env.size(); i++)
+            envp.push_back(const_cast<char *>(env[i].c_str()));
+
+        envp.push_back(NULL);
+
+        char *argv[3];
+
+        argv[0] = const_cast<char *>(executable.c_str());
+        argv[1] = const_cast<char *>(fs_script.c_str());
+        argv[2] = NULL;
+
+        execve(executable.c_str(), argv, &envp[0]);
+        _exit(1);
+    }
+
+    close(in_pipe[0]);
+    close(out_pipe[1]);
+
+    std::map<int, Client>::iterator it;
+
+    it = server.getClients().find(request_data._client_fd);
+
+    if (it != server.getClients().end())
+    {
+        it->second.cgiInput = body;
+        it->second.cgiInputPos = 0;
+    }
+
+    server.addCgiPipe(out_pipe[0], request_data._client_fd);
+    server.addCgiInputPipe(in_pipe[1], request_data._client_fd);
+    server.addCgiPid(out_pipe[0], pid);
+
+    return true;
 }
-

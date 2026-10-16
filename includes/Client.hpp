@@ -14,6 +14,15 @@ enum ClientState
     CLOSED
 };
 
+enum ChunkedState
+{
+    CHUNK_SIZE,
+    CHUNK_DATA,
+    CHUNK_CRLF,
+    CHUNK_TRAILERS,
+    CHUNK_DONE
+};
+
 class Client
 {
 public:
@@ -22,6 +31,12 @@ public:
 
     std::string readBuffer;
     std::string writeBuffer;
+
+    size_t chunkedPos;
+    size_t chunkedSize;
+    size_t chunkedReceived;
+    bool chunkedFinished;
+    ChunkedState chunkedState;
 
     ClientState state;
 

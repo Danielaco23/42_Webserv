@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cctype>
 #include <sstream>
+#include <sys/stat.h>
+#include <dirent.h>
 #include <fstream>
 
 
@@ -154,50 +156,183 @@ static void add_not_found_suggestions(std::string &html)
  * @param request_id Identifier used for logging and tracing the request.
  * @param cfg Server config.
  */
-void Server::send_file(int client_fd, const std::string &filepath, const std::string &request_id, Config &cfg)
+
+
+void Server::send_file(int client_fd, const std::string &filepath,
+    const std::string &request_id, Config &cfg)
 {
-    std::map<int, Client>::iterator it = this->_clients.find(client_fd);
-    if (it == this->_clients.end())
+    std::map<int, Client>::iterator it;
+    it = _clients.find(client_fd);
+    if (it == _clients.end())
         return;
 
     size_t i = 0;
-    for (i = 0; i < cfg.get_locations().size(); i++)
+    size_t best_length = 0;
+    size_t j = 0;
+
+    for (j = 0; j < cfg.get_locations().size(); j++)
     {
-        Location loc_check = cfg.get_locations()[i];
-        if (it->second.request._path.find(loc_check.get_path()) == 0)
+        const Location &loc = cfg.get_locations()[j];
+        const std::string &loc_path = loc.get_path();
+
+        if (loc_path.empty())
+            continue;
+        if (it->second.request._path.find(loc_path) != 0)
+            continue;
+        if (loc_path[loc_path.size() - 1] != '/'
+            && it->second.request._path.size() > loc_path.size()
+            && it->second.request._path[loc_path.size()] != '/')
+            continue;
+
+        if (loc_path.size() > best_length)
         {
-            break;
+            best_length = loc_path.size();
+            i = j;
         }
     }
-    if (i == cfg.get_locations().size())
+
+    if (best_length == 0)
     {
         send_error_page(client_fd, 404, "Not Found",
-            "No matching location found.",
-            it->second.request._request_id);
+            "No matching location found.", request_id);
         return;
     }
-    const Location &curr_location = cfg.get_locations()[i];
 
-    if (it->second.request._method == "HEAD" && !curr_location.get_method(LOC_HEAD_INDEX))
+    const Location &loc = cfg.get_locations()[i];
+
+    if (it->second.request._method == "HEAD"
+        && !loc.get_method(LOC_HEAD_INDEX))
     {
         send_error_page(client_fd, 405, "Method Not Allowed",
             "HEAD method is not allowed for this location.",
-            it->second.request._request_id);
+            request_id);
         return;
     }
-    if (it->second.request._method == "GET" && !curr_location.get_method(LOC_GET_INDEX))
+    if (it->second.request._method == "GET"
+        && !loc.get_method(LOC_GET_INDEX))
     {
         send_error_page(client_fd, 405, "Method Not Allowed",
             "GET method is not allowed for this location.",
-            it->second.request._request_id);
+            request_id);
         return;
     }
 
-    std::ifstream file(filepath.c_str(), std::ios::in | std::ios::binary);
+    struct stat st;
+    if (stat(filepath.c_str(), &st) != 0)
+    {
+        send_error_page(client_fd, 404, "Not Found",
+            "The requested resource was not found.", request_id);
+        return;
+    }
+
+    if (S_ISDIR(st.st_mode))
+    {
+        std::string index = loc.get_index();
+        if (index.empty())
+            index = cfg.get_index();
+
+        std::string index_path = filepath;
+        if (!index_path.empty()
+            && index_path[index_path.size() - 1] != '/')
+            index_path += "/";
+        index_path += index;
+
+        struct stat index_st;
+        
+        if (!index.empty()
+            && stat(index_path.c_str(), &index_st) == 0
+            && S_ISREG(index_st.st_mode))
+        {
+            std::cout << "DEBUG: Directorio: "
+                    << filepath << std::endl;
+            std::cout << "DEBUG: Indice encontrado: "
+                    << index_path << std::endl;
+            std::cout << "DEBUG: Tamano del indice: "
+                    << index_st.st_size << std::endl;
+
+            send_file(client_fd, index_path, request_id, cfg);
+            return;
+        }
+
+        std::cout << "DEBUG autoindex: " << loc.get_autoindex() << std::endl;
+        std::cout << "DEBUG location: " << loc.get_path() << std::endl;
+
+        if (!loc.get_autoindex())
+        {
+            send_error_page(client_fd, 403, "Forbidden",
+                "No index file and directory listing is disabled.",
+                request_id);
+            return;
+        }
+
+        if (it->second.request._path.empty()
+            || it->second.request._path[it->second.request._path.size() - 1] != '/')
+        {
+            send_error_page(client_fd, 404, "Not Found",
+                "The requested resource was not found.",
+                request_id);
+            return;
+        }
+
+        DIR *dir = opendir(filepath.c_str());
+        if (dir == NULL)
+        {
+            send_error_page(client_fd, 403, "Forbidden",
+                "Cannot read directory.", request_id);
+            return;
+        }
+
+        std::string body;
+        struct dirent *entry;
+
+        body = "<!DOCTYPE html><html><body><h1>Index of ";
+        body += it->second.request._path;
+        body += "</h1><ul>\n";
+
+        while ((entry = readdir(dir)) != NULL)
+        {
+            std::string name = entry->d_name;
+
+            if (name == "." || name == "..")
+                continue;
+
+            body += "<li><a href=\"";
+            body += name;
+            body += "\">";
+            body += name;
+            body += "</a></li>\n";
+        }
+        closedir(dir);
+
+        body += "</ul></body></html>\n";
+
+        std::string headers = build_headers(200, "OK",
+            "text/html; charset=UTF-8", body.size());
+
+        if (it->second.request._method == "HEAD")
+            it->second.writeBuffer = headers;
+        else
+            it->second.writeBuffer = headers + body;
+
+        it->second.state = WRITING;
+        enableWriteEvent(client_fd);
+        return;
+    }
+
+    if (!S_ISREG(st.st_mode))
+    {
+        send_error_page(client_fd, 403, "Forbidden",
+            "The requested resource is not a regular file.",
+            request_id);
+        return;
+    }
+
+    std::ifstream file(filepath.c_str(),
+        std::ios::in | std::ios::binary);
     if (!file)
     {
-        std::cerr << "Could not open "
-            << filepath << " (" << request_id << ")\n";
+        std::cerr << "Could not open " << filepath
+                  << " (" << request_id << ")\n";
         send_error_page(client_fd, 404, "Not Found",
             "The requested resource was not found.", request_id);
         return;
@@ -205,20 +340,17 @@ void Server::send_file(int client_fd, const std::string &filepath, const std::st
 
     std::string body = read_stream(file);
     std::string mime = get_mime_type(filepath);
-    std::string headers = build_headers(200, "OK", mime, body.size());
+    std::string headers = build_headers(200, "OK",
+        mime, body.size());
 
-    // HEAD handling CORRECTO
     if (it->second.request._method == "HEAD")
-    {
         it->second.writeBuffer = headers;
-    }
     else
-		it->second.writeBuffer = headers + body;
+        it->second.writeBuffer = headers + body;
 
-	it->second.state = WRITING;
-	enableWriteEvent(client_fd);
+    it->second.state = WRITING;
+    enableWriteEvent(client_fd);
 }
-
 /**
  * @brief Renders the error template and sends it as an HTTP response.
  * @param client_fd Socket file descriptor for the client connection.

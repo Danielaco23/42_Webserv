@@ -130,6 +130,8 @@ Location::Location(std::string path, std::string &cntnts)
 	bool		flags[9] = {false, false, false, false, false, false, false, false, false};
 
 	this->_path = path;
+	this->_autoindex = false;
+
 	std::cout << "CONTENT [" << cntnts << "]\n";
 	while (!cntnts.empty())
 	{
@@ -259,43 +261,61 @@ Location::Location(std::string path, std::string &cntnts)
 			std::cout << "\tLocation ALIAS [" << this->_alias << "]\n";
 			flags[5] = true;
 		}
-		else if (index + 7 < cntnts.size() && !strncmp(&cntnts[index], "cgi_ext", 7) && isspace(cntnts[index + 7]))
+		else if (index + 13 < cntnts.size()
+				&& !strncmp(&cntnts[index], "cgi_extension", 13)
+				&& isspace(cntnts[index + 13]))
 		{
-			if (flags[6])
-				throw (Config::ConfigBadConstrException("Duplicate cgi_ext"));
-			index += 7;
-			while (index < cntnts.size() - 1 && isspace(cntnts[index]))
-				index ++;
-			std::string	extract = cntnts.substr(index, cntnts.find(';') - index);
-			if (extract.empty())
-				throw (Config::ConfigBadConstrException("Invalid cgi_ext"));
-			while (!extract.empty())
-			{
-				while (isspace(extract[0]))
-					extract.erase(0, 1);
+				if (flags[6])
+						throw (Config::ConfigBadConstrException(
+								"Duplicate cgi_extension"));
+
+				index += 13;
+				while (index < cntnts.size() - 1 && isspace(cntnts[index]))
+						index++;
+
+				std::string extract =
+						cntnts.substr(index, cntnts.find(';') - index);
+
 				if (extract.empty())
-					break ;
-				if (!isspace(extract[extract.size() - 1]))
-					extract += " ";
-	
-				size_t	len = 0;
-				while (!isspace(extract[len]))
-					len ++;
-				this->_cgi_extensions.push_back(extract.substr(0, len));
-				extract.erase(0, len + 1);
-			}
-			for (size_t i = 0; i < this->_cgi_extensions.size(); i++)
-			{
-				if (i == 0)
-					std::cout << "\tLocation CGI_EXTENSIONS [";
-				if (i != 0)
-					std::cout << " | ";
-				std::cout << this->_cgi_extensions[i];
-				if (i == this->_cgi_extensions.size() - 1)
-					std::cout << "]\n";
-			}
-			
-			flags[6] = true;
+						throw (Config::ConfigBadConstrException(
+								"Invalid cgi_extension"));
+
+				while (!extract.empty())
+				{
+						while (!extract.empty() && isspace(extract[0]))
+								extract.erase(0, 1);
+
+						if (extract.empty())
+								break;
+
+						if (!isspace(extract[extract.size() - 1]))
+								extract += " ";
+
+						size_t len = 0;
+						while (!isspace(extract[len]))
+								len++;
+
+						this->_cgi_extensions.push_back(
+								extract.substr(0, len));
+
+						extract.erase(0, len + 1);
+				}
+
+				for (size_t i = 0; i < this->_cgi_extensions.size(); i++)
+				{
+						if (i == 0)
+								std::cout << "\tLocation CGI_EXTENSIONS [";
+
+						if (i != 0)
+								std::cout << " | ";
+
+						std::cout << this->_cgi_extensions[i];
+
+						if (i == this->_cgi_extensions.size() - 1)
+								std::cout << "]\n";
+				}
+
+				flags[6] = true;
 		}
 		else if (index + 8 < cntnts.size() && !strncmp(&cntnts[index], "cgi_path", 8) && isspace(cntnts[index + 8]))
 		{

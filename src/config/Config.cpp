@@ -23,6 +23,21 @@ size_t rev_find(char c, std::string cntnts, size_t index)
 	return (cntnts.npos);
 }
 
+
+static bool is_inside_block(const std::string &content, size_t index)
+{
+    int depth = 0;
+
+    for (size_t i = 0; i < index; i++)
+    {
+        if (content[i] == '{')
+            depth++;
+        else if (content[i] == '}')
+            depth--;
+    }
+    return (depth > 0);
+}
+
 size_t	ft_stoi(std::string str)
 {
 	std::stringstream	ss(str);
@@ -527,45 +542,51 @@ void	Config::parse_cmbs(std::string &cntnts)
 	// std::cout << "CLIENT MAX BODY SIZE CONFIRMED [" << this->_client_max_body_size << "]\n";
 }
 
-void	Config::parse_autoindex(std::string &cntnts)
+void    Config::parse_autoindex(std::string &cntnts)
 {
-	std::string		word = "autoindex";
-	size_t			index = cntnts.find(word);
+	std::string             word = "autoindex";
+	size_t                  index = cntnts.find(word);
 
-	while (true)
-	{
-		if (index != cntnts.npos && isspace(cntnts[index + word.length()])
-			&& (rev_find('{', cntnts, index) == cntnts.npos || rev_find('}', cntnts, index) != cntnts.npos))
-		{
-			size_t			start = rev_find('\n', cntnts, index);
-			size_t			end = cntnts.find('\n', index);
+    while (true)
+    {
+		if (index != cntnts.npos
+			&& index + word.length() < cntnts.size()
+			&& isspace(cntnts[index + word.length()])
+			&& !is_inside_block(cntnts, index))
+			{
+			size_t start = rev_find('\n', cntnts, index);
+			size_t end = cntnts.find('\n', index);
 
 			if (end == cntnts.npos)
 				end = cntnts.find(';', index);
-
 			if (start == cntnts.npos)
 				start = 0;
 			else
-				start ++;
+				start++;
 			index += word.length();
 			while (isspace(cntnts[index]))
-				index ++;
-			std::string	res = cntnts.substr(index, cntnts.find(';', index) - index);
-			if (strcmp(res.c_str(), "on"))
+				index++;
+			std::string res = cntnts.substr(index, cntnts.find(';', index) - index);
+
+			if (res == "on")
 				this->_autoindex = true;
-			else
+			else if (res == "off")
 				this->_autoindex = false;
+			else
+				throw_with_msg("Invalid autoindex value");
+
 			cntnts.erase(start, end - start + 1);
-			break ;
+			break;
 		}
 		else if (index != cntnts.npos && index != cntnts.size() - 1)
 			index = cntnts.find(word, index + 1);
 		else
-		{
-			this->_autoindex = DFLT_S_NAME;
-			break ;
-		}
-	}
+			{
+				this->_autoindex = DFLT_AUTOINDEX;
+				break;
+			}
+        }
+
 	// std::cout << "AUTOINDEX CONFIRMED [";
 	// if (this->_autoindex)
 		// std::cout << "TRUE]\n";
