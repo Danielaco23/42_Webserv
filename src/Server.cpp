@@ -769,18 +769,6 @@ void Server::handleClientRead(int fd)
         return;
     }
 
-    std::cout << "========== DEBUG REQUEST =========="
-            << std::endl;
-    std::cout << "FD: " << fd << std::endl;
-    std::cout << "Method: " << c.request._method << std::endl;
-    std::cout << "Path: " << c.request._path << std::endl;
-    std::cout << "Version: " << c.request._version << std::endl;
-    std::cout << "Request ID: " << c.request._request_id << std::endl;
-    std::cout << "Request size: " << c.request._req.size()
-            << std::endl;
-    std::cout << "==================================="
-            << std::endl;
-
     // =========================
     // CONFIG LOCAL (CORE CLEAN)
     // =========================
@@ -847,13 +835,6 @@ void Server::handleClientRead(int fd)
 
     if (location_index.empty())
         location_index = index;
-
-    //DEBUG: comprobar la ubicacion seleccionada
-    std::cout << "\n========== DEBUG LOCATION ==========" << std::endl;
-    std::cout << "Request path: " << c.request._path << std::endl;
-    std::cout << "Selected location: " << curr_location.get_path() << std::endl;
-    std::cout << "Location root: " << location_root << std::endl; std::cout << "Location index: " <<
-        location_index << std::endl; std::cout << "====================================" << std::endl;
 
     if (is_cgi_path(c.request._path, curr_location))
     {

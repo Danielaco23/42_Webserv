@@ -310,7 +310,6 @@ void	Config::parse_port(std::string &cntnts)
 		else
 			throw_with_msg("Config file missing required listen port");
 	}
-	// std::cout << "PORT CONFIRMED [" << this->_port << "]\n";
 }
 
 void	Config::parse_root(std::string &cntnts)
@@ -725,7 +724,7 @@ void	Config::parse_s_address(std::string &cntnts)
 */
 Config::Config(std::string config_file): _is_real(false), _port(0), _www_root(""), _index(""), _client_max_body_size(0), _autoindex(false), _listen_fd(-1)
 {
-	std::cout << std::endl << "BEGIN PARSING OF SERVER Nº " << server_count(false, false) << std::endl << std::endl;
+	//std::cout << std::endl << "BEGIN PARSING OF SERVER Nº " << server_count(false, false) << std::endl << std::endl;
 	for (size_t i = 0; i < 4; i++)
 		this->_host[i] = 0;
 	if (config_file.empty() || config_file.size() < 6)
