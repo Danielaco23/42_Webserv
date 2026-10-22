@@ -582,6 +582,13 @@ After stopping the server, verify that the port can be reused by starting it aga
 
 - So far, as far as dgomez-l's apportations, AI was **not** used in the development of this project.
 
+- what is RFC ? : https://www.rfc-editor.org/rfc/rfc9110.htm
+- What is CGI ? : https://www.rfc-editor.org/rfc/rfc3875.html
+- status codes :  https://developer.mozilla.org/es/docs/Web/HTTP/Reference/Status
+- Protocol HTTP:  https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/Overview
+- Autoindex:      https://nginx.org/en/docs/http/ngx_http_autoindex_module.html
+- Sockets :       https://pubs.opengroup.org/onlinepubs/9699919799/
+
 # Documentation
 
 - Practical guide for HTTP + CGI + uploads:
