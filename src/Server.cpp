@@ -2,6 +2,7 @@
 #include "../includes/Client.hpp"
 #include <csignal>
 #include <cerrno>
+#include <sys/stat.h>
 #include <vector>
 
 volatile sig_atomic_t g_running = 1;
@@ -266,11 +267,20 @@ void Server::processPollEvents()
         // =========================
         if (events & POLLOUT)
             handleClientWrite(fd);
+
         // =========================
         // ERRORS
         // =========================
         if (events & POLLHUP)
-            _pending_remove.push_back(fd);
+        {
+            std::map<int, Client>::iterator it;
+
+            it = _clients.find(fd);
+
+            if (it != _clients.end()
+                && it->second.writeBuffer.empty())
+                _pending_remove.push_back(fd);
+        }
     }
 }
 
@@ -424,6 +434,121 @@ static bool has_chunked_encoding(const std::string &request)
     return lower_headers.find(
         "transfer-encoding: chunked"
     ) != std::string::npos;
+}
+
+static std::string remove_chunked_header(
+    const std::string &headers)
+{
+    std::string result;
+    size_t start;
+    size_t end;
+    size_t line_end;
+    std::string line;
+    std::string lower_line;
+
+    start = 0;
+
+    while (start < headers.size())
+    {
+        line_end = headers.find("\r\n", start);
+
+        if (line_end == std::string::npos)
+            end = headers.size();
+        else
+            end = line_end;
+
+        line = headers.substr(start, end - start);
+
+        if (!line.empty())
+        {
+            lower_line = to_lower_copy(line);
+
+            if (lower_line.find("transfer-encoding:")
+                != 0)
+            {
+                result += line;
+                result += "\r\n";
+            }
+        }
+
+        if (line_end == std::string::npos)
+            break;
+
+        start = line_end + 2;
+    }
+
+    return result;
+}
+
+static bool decode_chunked_body(std::string &request)
+{
+    size_t headers_end;
+    size_t pos;
+    size_t line_end;
+    size_t chunk_size;
+    size_t data_end;
+    std::string headers;
+    std::string line;
+    std::string decoded_body;
+    std::istringstream iss;
+
+    headers_end = find_headers_end(request);
+
+    if (headers_end == std::string::npos)
+        return false;
+
+    headers = request.substr(0, headers_end - 2);
+    pos = headers_end;
+
+    while (true)
+    {
+        line_end = request.find("\r\n", pos);
+
+        if (line_end == std::string::npos)
+            return false;
+
+        line = request.substr(pos, line_end - pos);
+
+        iss.clear();
+        iss.str(line);
+        iss >> std::hex >> chunk_size;
+
+        if (iss.fail())
+            return false;
+
+        pos = line_end + 2;
+
+        if (chunk_size == 0)
+            break;
+
+        data_end = pos + chunk_size;
+
+        if (data_end + 2 > request.size())
+            return false;
+
+        decoded_body.append(request, pos, chunk_size);
+
+        pos = data_end;
+
+        if (request.compare(pos, 2, "\r\n") != 0)
+            return false;
+
+        pos += 2;
+    }
+
+    headers = remove_chunked_header(headers);
+
+    std::ostringstream length_stream;
+
+    length_stream << decoded_body.size();
+
+    headers += "Content-Length: ";
+    headers += length_stream.str();
+    headers += "\r\n\r\n";
+
+    request = headers + decoded_body;
+
+    return true;
 }
 
 static bool parse_chunk_trailers(Client &client)
@@ -612,7 +737,6 @@ void Server::handleClientRead(int fd)
     Client &c = it->second;
 
     c.last_activity = std::time(NULL);
-
     c.readBuffer.append(buffer, bytes);
     c.request._client_fd = fd;
 
@@ -621,13 +745,21 @@ void Server::handleClientRead(int fd)
         return;
     }
 
-    c.request._req = c.readBuffer;
+    if (has_chunked_encoding(c.readBuffer))
+    {
+        if (!decode_chunked_body(c.readBuffer))
+        {
+            send_error_page(fd, 400, "Bad Request",
+                "Malformed chunked request.",
+                c.request._request_id);
+            return;
+        }
+    }
+
+    c.request._req.swap(c.readBuffer);
 
     if (!check_response(*this, c.request))
-    {
-        //_pending_remove.push_back(fd);
         return;
-    }
 
     if (!parse_request_line(c.request))
     {
@@ -636,6 +768,18 @@ void Server::handleClientRead(int fd)
             c.request._request_id);
         return;
     }
+
+    std::cout << "========== DEBUG REQUEST =========="
+            << std::endl;
+    std::cout << "FD: " << fd << std::endl;
+    std::cout << "Method: " << c.request._method << std::endl;
+    std::cout << "Path: " << c.request._path << std::endl;
+    std::cout << "Version: " << c.request._version << std::endl;
+    std::cout << "Request ID: " << c.request._request_id << std::endl;
+    std::cout << "Request size: " << c.request._req.size()
+            << std::endl;
+    std::cout << "==================================="
+            << std::endl;
 
     // =========================
     // CONFIG LOCAL (CORE CLEAN)
@@ -863,16 +1007,16 @@ void Server::handleClientRead(int fd)
 
 void Server::enableWriteEvent(int fd)
 {
-	for (size_t i = 0; i < _fds.size(); i++)
-	{
-		if (_fds[i].fd == fd)
-		{
-			_fds[i].events |= POLLOUT;
-			return;
-		}
-	}
+    for (size_t i = 0; i < _fds.size(); i++)
+    {
+        if (_fds[i].fd == fd)
+        {
+            _fds[i].events &= ~POLLIN;
+            _fds[i].events |= POLLOUT;
+            return;
+        }
+    }
 }
-
 
 // ============================
 // write client
@@ -888,10 +1032,6 @@ void Server::handleClientWrite(int fd)
 
     Client &c = it->second;
 
-    std::cout << "handleClientWrite fd=" << fd
-              << " buffer size=" << c.writeBuffer.size()
-              << std::endl;
-
     if (c.writeBuffer.empty())
     {
         _pending_remove.push_back(fd);
@@ -899,11 +1039,17 @@ void Server::handleClientWrite(int fd)
     }
 
     ssize_t sent;
+    size_t first_line_end;
 
+    first_line_end = c.writeBuffer.find("\r\n");
+
+    if (first_line_end != std::string::npos)
+    {
+        std::cout << "Response first line: "
+                << c.writeBuffer.substr(0, first_line_end)
+                << std::endl;
+    }
     sent = send(fd, c.writeBuffer.c_str(), c.writeBuffer.size(), 0);
-
-    std::cout << "send() devolvio: " << sent
-              << " bytes" << std::endl;
 
     if (sent < 0)
     {
@@ -917,14 +1063,9 @@ void Server::handleClientWrite(int fd)
         return;
     }
 
+    c.last_activity = std::time(NULL);
+
     c.writeBuffer.erase(0, static_cast<size_t>(sent));
-
-    std::cout << "Quedan: "
-              << c.writeBuffer.size()
-              << " bytes" << std::endl;
-
-    if (c.writeBuffer.empty())
-        _pending_remove.push_back(fd);
 }
 
 // ============================
@@ -1091,44 +1232,50 @@ void Server::handleCgiWrite(int fd)
 {
     std::map<int, int>::iterator pipe_it;
     std::map<int, Client>::iterator client_it;
+    Client *client;
+    ssize_t sent;
 
     pipe_it = _cgi_input_pipes.find(fd);
     if (pipe_it == _cgi_input_pipes.end())
         return;
 
     client_it = _clients.find(pipe_it->second);
-
     if (client_it == _clients.end())
     {
-        removeCgiInputPipe(fd);
+        _pending_remove.push_back(fd);
         return;
     }
 
-    Client &client = client_it->second;
+    client = &client_it->second;
 
-    if (client.cgiInputPos >= client.cgiInput.size())
+    if (client->cgiInputPos >= client->cgiInput.size())
     {
-        removeCgiInputPipe(fd);
+        std::string().swap(client->cgiInput);
+        client->cgiInputPos = 0;
+        _pending_remove.push_back(fd);
         return;
     }
-
-    ssize_t sent;
 
     sent = write(
         fd,
-        client.cgiInput.c_str() + client.cgiInputPos,
-        client.cgiInput.size() - client.cgiInputPos
+        client->cgiInput.c_str() + client->cgiInputPos,
+        client->cgiInput.size() - client->cgiInputPos
     );
 
     if (sent > 0)
     {
-        client.cgiInputPos += static_cast<size_t>(sent);
+        client->cgiInputPos += static_cast<size_t>(sent);
+        client->last_activity = std::time(NULL);
 
-        if (client.cgiInputPos >= client.cgiInput.size())
-            removeCgiInputPipe(fd);
+        if (client->cgiInputPos >= client->cgiInput.size())
+        {
+            std::string().swap(client->cgiInput);
+            client->cgiInputPos = 0;
+            _pending_remove.push_back(fd);
+        }
     }
     else if (sent == 0)
-    {
-        removeCgiInputPipe(fd);
-    }
+        _pending_remove.push_back(fd);
+    else
+        _pending_remove.push_back(fd);
 }

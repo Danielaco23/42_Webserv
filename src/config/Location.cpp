@@ -131,6 +131,15 @@ Location::Location(std::string path, std::string &cntnts)
 
 	this->_path = path;
 	this->_autoindex = false;
+	this->_root = "";
+	this->_index = "";
+
+	for (size_t i = 0; i < MAX_METHODS; i++)
+			this->_methods[i] = false;
+
+	this->_return = "";
+	this->_alias = "";
+	this->_client_max_body_size = DFLT_CMBS;
 
 	std::cout << "CONTENT [" << cntnts << "]\n";
 	while (!cntnts.empty())

@@ -16,21 +16,35 @@ static std::string int_to_string(int value)
 
 
 
-static std::string get_header_value(const std::string &headers, const std::string &name)
+static std::string get_header_value(const std::string &headers, const std::string &header_name)
 {
-	size_t pos = headers.find(name + ":");
-	if (pos == std::string::npos)
-		return "";
+    std::string search;
+    size_t pos;
+    size_t end;
+    std::string value;
 
-	pos += name.size() + 1;
-	while (pos < headers.size() && (headers[pos] == ' ' || headers[pos] == '\t'))
-		++pos;
+    search = header_name + ":";
+    pos = headers.find(search);
 
-	size_t end = headers.find("\r\n", pos);
-	if (end == std::string::npos)
-		end = headers.find('\n', pos);
-	if (end == std::string::npos)
-		end = headers.size();
+    if (pos == std::string::npos)
+        return "";
 
-	return headers.substr(pos, end - pos);
+    pos += search.size();
+
+    while (pos < headers.size()
+        && (headers[pos] == ' ' || headers[pos] == '\t'))
+        pos++;
+
+    end = headers.find("\r\n", pos);
+    if (end == std::string::npos)
+        end = headers.size();
+
+    value = headers.substr(pos, end - pos);
+
+    while (!value.empty()
+        && (value[value.size() - 1] == ' '
+        || value[value.size() - 1] == '\t'))
+        value.erase(value.size() - 1);
+
+    return value;
 }

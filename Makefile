@@ -60,7 +60,7 @@ CXX_OBJ_DIR		=	objects
 CXX_OBJ			=	$(patsubst %.cpp, $(CXX_OBJ_DIR)/%.o, $(CXX_SRC))
 
 CXX				=	c++
-CFLAGS			=	-Wall -Wextra -Werror -std=c++98 -g3 -fsanitize=address
+CFLAGS			=	-Wall -Wextra -Werror -std=c++98
 
 all: $(CXX_NAME)
 

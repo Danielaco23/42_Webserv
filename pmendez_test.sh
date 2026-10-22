@@ -128,6 +128,7 @@ test_raw_case "HTTP/1.0 inválido" "GET / HTTP/1.0\r\nHost: 127.0.0.1\r\n\r\n" "
 print_section "CGI TIMEOUT"
 if [ ! -f cgi-bin/slow.sh ]; then
 	cat > cgi-bin/slow.sh <<'EOF'
+
 #!/bin/bash
 sleep 10
 echo "Status: 200 OK"
@@ -144,6 +145,164 @@ echo "=== RESUMEN ==="
 echo -e "${GREEN}PASS: $PASS${NC}"
 echo -e "${RED}FAIL: $FAIL${NC}"
 echo ""
+
+print_section "HEAD"
+
+test_case "HEAD /" \
+	"curl -i -s -X HEAD '${BASE_URL}/'" \
+	"405"
+
+test_case "HEAD inexistente" \
+	"curl -i -s -X HEAD '${BASE_URL}/no-existe'" \
+	"405"
+print_section "PUT"
+
+test_case "PUT /put_test" \
+	"curl -i -s -X PUT -d 'hola' '${BASE_URL}/put_test'" \
+	"200"
+
+test_case "PUT /" \
+	"curl -i -s -X PUT -d 'hola' '${BASE_URL}/'" \
+	"405"
+
+test_case "PUT inexistente" \
+	"curl -i -s -X PUT -d 'hola' '${BASE_URL}/no-existe'" \
+	"404"
+
+print_section "LOCATION MATCHING"
+
+test_case "GET /directory" \
+	"curl -i -s '${BASE_URL}/directory'" \
+	"200"
+
+test_case "GET /directory/" \
+	"curl -i -s '${BASE_URL}/directory/'" \
+	"200"
+
+test_case "GET /directory/nop" \
+	"curl -i -s '${BASE_URL}/directory/nop'" \
+	"200"
+
+test_case "GET /directory/nop/" \
+	"curl -i -s '${BASE_URL}/directory/nop/'" \
+	"200"
+
+test_case "GET /directory/youpi.bad_extension" \
+	"curl -i -s '${BASE_URL}/directory/youpi.bad_extension'" \
+	"200"
+
+test_case "GET /directory/youpi.bla" \
+	"curl -i -s '${BASE_URL}/directory/youpi.bla'" \
+	"200"
+
+test_case "Location parecida /directoryXXX" \
+	"curl -i -s '${BASE_URL}/directoryXXX'" \
+	"404"
+
+print_section "PATH TRAVERSAL"
+
+test_case "Traversal básico" \
+	"curl -i -s '${BASE_URL}/../../etc/passwd'" \
+	"400"
+
+test_case "Traversal encoded" \
+	"curl -i -s '${BASE_URL}/%2e%2e/%2e%2e/etc/passwd'" \
+	"400"
+
+test_case "Double slash" \
+	"curl -i -s '${BASE_URL}//'" \
+	"200"
+
+print_section "HTTP MALFORMADO"
+
+test_raw_case "Sin Host" \
+	"GET / HTTP/1.1\r\n\r\n" \
+	"400"
+
+test_raw_case "Método inexistente" \
+	"BANANA / HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n" \
+	"405"
+
+test_raw_case "Request line incompleta" \
+	"GET / HTTP/1.1\r\nHost: 127.0.0.1" \
+	"400"
+
+test_raw_case "HTTP 2.0" \
+	"GET / HTTP/2.0\r\nHost: 127.0.0.1\r\n\r\n" \
+	"505"
+
+test_raw_case "Demasiados tokens" \
+	"GET / HTTP/1.1 EXTRA\r\nHost: 127.0.0.1\r\n\r\n" \
+	"400"
+
+test_raw_case "Content-Length incorrecto" \
+	"POST /post_body HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 100\r\n\r\nhola" \
+	"400"
+
+test_raw_case "Content-Length 0" \
+	"POST /post_body HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 0\r\n\r\n" \
+	"200"
+
+test_raw_case "Content-Length negativo" \
+	"POST /post_body HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: -1\r\n\r\n" \
+	"400"
+
+test_raw_case "Content-Length enorme" \
+	"POST /post_body HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 999999999999\r\n\r\n" \
+	"413"
+	
+test_raw_case "Chunked válido" \
+	"POST /post_body HTTP/1.1\r\nHost: 127.0.0.1\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n\r\n" \
+	"200"
+
+test_raw_case "Chunked inválido" \
+	"POST /post_body HTTP/1.1\r\nHost: 127.0.0.1\r\nTransfer-Encoding: chunked\r\n\r\nZZZ\r\nhello\r\n0\r\n\r\n" \
+	"400"
+
+test_raw_case "Chunked sin final" \
+	"POST /post_body HTTP/1.1\r\nHost: 127.0.0.1\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n" \
+	"400"
+
+print_section "CGI .BLA"
+
+test_case "GET .bla" \
+	"curl -i -s '${BASE_URL}/directory/youpi.bla'" \
+	"200"
+
+test_case "POST .bla" \
+	"curl -i -s -X POST -d 'hola' '${BASE_URL}/directory/youpi.bla'" \
+	"200"
+
+test_case "POST .bla inexistente" \
+	"curl -i -s -X POST -d 'hola' '${BASE_URL}/directory/noexiste.bla'" \
+	"404"
+
+test_case "GET extensión no CGI" \
+	"curl -i -s '${BASE_URL}/directory/nop/other.pouic'" \
+	"200"
+
+python3 - <<'PY' > "$tmp_dir/cgi_body.bin"
+print("A" * 1000000, end="")
+PY
+
+test_case "POST CGI 1MB" \
+	"curl -i -s --data-binary '@$tmp_dir/cgi_body.bin' '${BASE_URL}/directory/youpi.bla'" \
+	"200"
+printf 'hola' > "$tmp_dir/small.bin"
+
+test_case "POST CGI pequeño" \
+	"curl -i -s --data-binary '@$tmp_dir/small.bin' '${BASE_URL}/directory/youpi.bla'" \
+	"200"
+
+print_section "CONCURRENCIA"
+
+for i in $(seq 1 20); do
+	curl -s "${BASE_URL}/" > /dev/null &
+done
+
+wait
+
+echo "[TEST] 20 conexiones simultáneas ... done"
 
 if [ "$FAIL" -eq 0 ]; then
 	echo -e "${GREEN}✓ Todos los tests pasaron${NC}"

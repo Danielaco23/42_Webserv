@@ -441,6 +441,18 @@ void Server::send_error_page(int client_fd,
             "text/html; charset=UTF-8",
             html.size());
 
+
+    std::cout << "========== DEBUG ERROR RESPONSE =========="
+            << std::endl;
+    std::cout << "Status recibido: "
+            << status << std::endl;
+    std::cout << "Title: "
+            << title << std::endl;
+    std::cout << "Headers generados:" << std::endl;
+    std::cout << headers;
+    std::cout << "=========================================="
+            << std::endl;
+
     it->second.writeBuffer = headers + html;
     it->second.state = WRITING;
     enableWriteEvent(client_fd);

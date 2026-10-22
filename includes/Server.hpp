@@ -138,7 +138,4 @@ bool is_cgi_path(const std::string &path, const Location &location);
 bool check_response(Server &server, HttpRequest &request_data);
 bool parse_request_line(HttpRequest &request_data);
 
-
-
-
 #endif

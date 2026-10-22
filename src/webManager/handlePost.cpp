@@ -1,5 +1,56 @@
 #include "../includes/Server.hpp"
 
+
+
+// ===== Multipart parsing =====
+
+static std::string to_lower_copy(const std::string &value)
+{
+	std::string lowered = value;
+	for (size_t i = 0; i < lowered.size(); ++i)
+		lowered[i] = static_cast<char>(std::tolower(static_cast<unsigned char>(lowered[i])));
+	return lowered;
+}
+
+static std::string trim_copy(const std::string &value)
+{
+	size_t start = 0;
+	while (start < value.size() && (value[start] == ' ' || value[start] == '\t' || value[start] == '\r' || value[start] == '\n'))
+		++start;
+
+	size_t end = value.size();
+	while (end > start && (value[end - 1] == ' ' || value[end - 1] == '\t' || value[end - 1] == '\r' || value[end - 1] == '\n'))
+		--end;
+
+	return value.substr(start, end - start);
+}
+
+static bool extract_header_value(const std::string &headers_part, const std::string &name, std::string &value)
+{
+	std::string lower_headers = to_lower_copy(headers_part);
+	std::string lower_name = to_lower_copy(name);
+	size_t header_pos = lower_headers.find(lower_name + ":");
+	if (header_pos == std::string::npos)
+		return false;
+
+	size_t colon_pos = headers_part.find(':', header_pos);
+	if (colon_pos == std::string::npos)
+		return false;
+
+	size_t start = colon_pos + 1;
+	while (start < headers_part.size() && (headers_part[start] == ' ' || headers_part[start] == '\t'))
+		++start;
+
+	size_t end = headers_part.find("\r\n", start);
+	if (end == std::string::npos)
+		end = headers_part.find("\n", start);
+	if (end == std::string::npos)
+		end = headers_part.size();
+
+	value = trim_copy(headers_part.substr(start, end - start));
+	return !value.empty();
+}
+
 // ===== Responses =====
 static void respond_upload_success(Server &server, int client_fd)
 {
@@ -56,54 +107,9 @@ static void respond_text_error(
     server.enableWriteEvent(client_fd);
 }
 
-// ===== Multipart parsing =====
 
-static std::string to_lower_copy(const std::string &value)
-{
-	std::string lowered = value;
-	for (size_t i = 0; i < lowered.size(); ++i)
-		lowered[i] = static_cast<char>(std::tolower(static_cast<unsigned char>(lowered[i])));
-	return lowered;
-}
 
-static std::string trim_copy(const std::string &value)
-{
-	size_t start = 0;
-	while (start < value.size() && (value[start] == ' ' || value[start] == '\t' || value[start] == '\r' || value[start] == '\n'))
-		++start;
 
-	size_t end = value.size();
-	while (end > start && (value[end - 1] == ' ' || value[end - 1] == '\t' || value[end - 1] == '\r' || value[end - 1] == '\n'))
-		--end;
-
-	return value.substr(start, end - start);
-}
-
-static bool extract_header_value(const std::string &headers_part, const std::string &name, std::string &value)
-{
-	std::string lower_headers = to_lower_copy(headers_part);
-	std::string lower_name = to_lower_copy(name);
-	size_t header_pos = lower_headers.find(lower_name + ":");
-	if (header_pos == std::string::npos)
-		return false;
-
-	size_t colon_pos = headers_part.find(':', header_pos);
-	if (colon_pos == std::string::npos)
-		return false;
-
-	size_t start = colon_pos + 1;
-	while (start < headers_part.size() && (headers_part[start] == ' ' || headers_part[start] == '\t'))
-		++start;
-
-	size_t end = headers_part.find("\r\n", start);
-	if (end == std::string::npos)
-		end = headers_part.find("\n", start);
-	if (end == std::string::npos)
-		end = headers_part.size();
-
-	value = trim_copy(headers_part.substr(start, end - start));
-	return !value.empty();
-}
 
 static std::string extract_boundary(const std::string &headers_part)
 {
@@ -248,13 +254,21 @@ void Server::handle_post_upload(
 
     std::string headers_part;
     std::string buffered_body;
+    size_t content_length;
+    std::string body;
+    std::string boundary;
+    std::string content_type;
 
     if (request.empty())
     {
         respond_upload_success(*this, client_fd);
         return;
     }
-    if (!split_headers_and_body(request, headers_part, buffered_body))
+
+    if (!split_headers_and_body(
+            request,
+            headers_part,
+            buffered_body))
     {
         respond_text_error(
             *this,
@@ -266,11 +280,23 @@ void Server::handle_post_upload(
         return;
     }
 
-    size_t content_length = extract_content_length(headers_part);
-    
-    std::cout << "headers_part:" << std::endl << "|" << headers_part << "|" << std::endl;
-    std::cout << "buffered body size: " << buffered_body.size() << std::endl;
-    std::cout << "buffered body:" << buffered_body << std::endl;
+    content_length = extract_content_length(headers_part);
+
+    std::cout << "headers_part:"
+              << std::endl
+              << "|"
+              << headers_part
+              << "|"
+              << std::endl;
+
+    std::cout << "buffered body size: "
+              << buffered_body.size()
+              << std::endl;
+
+    std::cout << "buffered body:"
+              << buffered_body
+              << std::endl;
+
     if (content_length == 0
         && headers_part.find("Content-Length:") == std::string::npos)
     {
@@ -296,8 +322,7 @@ void Server::handle_post_upload(
         return;
     }
 
-    std::string body = buffered_body;
-
+    body = buffered_body;
 
     if (body.size() < content_length)
     {
@@ -314,9 +339,18 @@ void Server::handle_post_upload(
     if (body.size() > content_length)
         body.erase(content_length);
 
-    std::string boundary = extract_boundary(headers_part);
+    content_type.clear();
+    extract_header_value(
+        headers_part,
+        "Content-Type",
+        content_type
+    );
 
-    std::cerr << "boundary='"
+    boundary = extract_boundary(headers_part);
+
+    std::cerr << "Content-Type='"
+              << content_type
+              << "' boundary='"
               << boundary
               << "' body_size="
               << body.size()
@@ -324,34 +358,39 @@ void Server::handle_post_upload(
               << content_length
               << std::endl;
 
-    if (boundary.empty())
+    if (content_type.find("multipart/form-data") == 0)
     {
-        respond_text_error(
-            *this,
-            client_fd,
-            400,
-            "Bad Request",
-            "Invalid multipart form request."
-        );
-        return;
-    }
+        if (boundary.empty())
+        {
+            respond_text_error(
+                *this,
+                client_fd,
+                400,
+                "Bad Request",
+                "Invalid multipart form request."
+            );
+            return;
+        }
 
-    int saved_files = save_multipart_files(
-        body,
-        boundary,
-        www_root
-    );
+        int saved_files;
 
-    if (saved_files <= 0)
-    {
-        respond_text_error(
-            *this,
-            client_fd,
-            400,
-            "Bad Request",
-            "No valid files found in upload."
+        saved_files = save_multipart_files(
+            body,
+            boundary,
+            www_root
         );
-        return;
+
+        if (saved_files <= 0)
+        {
+            respond_text_error(
+                *this,
+                client_fd,
+                400,
+                "Bad Request",
+                "No valid files found in upload."
+            );
+            return;
+        }
     }
 
     respond_upload_success(*this, client_fd);

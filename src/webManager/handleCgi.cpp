@@ -8,6 +8,7 @@
 #include <sstream>
 #include <vector>
 #include <fcntl.h>
+#include <cctype>
 
 
 static bool get_request_body(const std::string &request,
@@ -157,6 +158,7 @@ void Server::handleCgiRead(int fd)
     if (n > 0)
     {
         it->second.cgiOutput.append(buffer, n);
+        it->second.last_activity = std::time(NULL);
         return;
     }
 
@@ -176,29 +178,136 @@ static void add_env(std::vector<std::string> &env,
 	env.push_back(key + "=" + value);
 }
 
+static std::string lower_string(const std::string &value)
+{
+    std::string result;
+    size_t i;
+
+    i = 0;
+    while (i < value.size())
+    {
+        result += static_cast<char>(
+            std::tolower(static_cast<unsigned char>(value[i])));
+        i++;
+    }
+    return result;
+}
+
+static std::string trim_header_value(const std::string &value)
+{
+    size_t start;
+    size_t end;
+
+    start = 0;
+    while (start < value.size()
+        && (value[start] == ' ' || value[start] == '\t'))
+        start++;
+
+    end = value.size();
+    while (end > start
+        && (value[end - 1] == ' ' || value[end - 1] == '\t'))
+        end--;
+
+    return value.substr(start, end - start);
+}
+
+static std::string cgi_header_name(const std::string &name)
+{
+    std::string lower;
+    std::string result;
+    size_t i;
+
+    lower = lower_string(name);
+
+    if (lower == "content-type")
+        return "CONTENT_TYPE";
+    if (lower == "content-length")
+        return "CONTENT_LENGTH";
+
+    result = "HTTP_";
+    i = 0;
+    while (i < name.size())
+    {
+        if (name[i] == '-')
+            result += '_';
+        else
+            result += static_cast<char>(
+                std::toupper(static_cast<unsigned char>(name[i])));
+        i++;
+    }
+    return result;
+}
+
+static void add_request_headers(std::vector<std::string> &env,
+                                const std::string &request)
+{
+    size_t pos;
+    size_t line_end;
+    size_t colon;
+    std::string line;
+    std::string name;
+    std::string value;
+
+    pos = request.find("\r\n");
+    if (pos == std::string::npos)
+        return;
+
+    pos += 2;
+
+    while (pos < request.size())
+    {
+        line_end = request.find("\r\n", pos);
+        if (line_end == std::string::npos)
+            break;
+
+        if (line_end == pos)
+            break;
+
+        line = request.substr(pos, line_end - pos);
+        colon = line.find(':');
+
+        if (colon != std::string::npos)
+        {
+            name = line.substr(0, colon);
+            value = line.substr(colon + 1);
+            value = trim_header_value(value);
+
+            if (!name.empty())
+                add_env(env, cgi_header_name(name), value);
+        }
+
+        pos = line_end + 2;
+    }
+}
+
 void Server::finishCgi(int pipe_fd)
 {
-    int client_fd = getCgiClient(pipe_fd);
+    int client_fd;
+    std::map<int, Client>::iterator it;
+    std::map<int, pid_t>::iterator pid_it;
+    pid_t pid;
+    size_t header_end;
+    size_t type_pos;
+    size_t type_end;
+    std::string content_type;
+    std::string response_header;
 
+    client_fd = getCgiClient(pipe_fd);
     if (client_fd < 0)
     {
         _pending_remove.push_back(pipe_fd);
         return;
     }
 
-    std::map<int, Client>::iterator it = _clients.find(client_fd);
-
+    it = _clients.find(client_fd);
     if (it == _clients.end())
     {
         _pending_remove.push_back(pipe_fd);
         return;
     }
 
-	pid_t pid = -1;
-
-    std::map<int, pid_t>::iterator pid_it;
+    pid = -1;
     pid_it = _cgi_pids.find(pipe_fd);
-
     if (pid_it != _cgi_pids.end())
     {
         pid = pid_it->second;
@@ -208,17 +317,70 @@ void Server::finishCgi(int pipe_fd)
     if (pid > 0)
         waitpid(pid, NULL, WNOHANG);
 
-    std::string body = it->second.cgiOutput;
+    std::cout << "========== CGI FINISH =========="
+            << std::endl;
+    std::cout << "Client FD: " << client_fd << std::endl;
+    std::cout << "CGI output size: "
+            << it->second.cgiOutput.size()
+            << " bytes"
+            << std::endl;
+    std::cout << "================================"
+            << std::endl;
 
-    std::ostringstream response;
+    header_end = it->second.cgiOutput.find("\r\n\r\n");
 
-    response << "HTTP/1.1 200 OK\r\n"
-             << "Content-Type: text/html\r\n"
-             << "Content-Length: " << body.size() << "\r\n"
-             << "Connection: close\r\n\r\n"
-             << body;
+    if (header_end != std::string::npos)
+    {
+        type_pos = it->second.cgiOutput.find("Content-Type:");
 
-    it->second.writeBuffer = response.str();
+        if (type_pos != std::string::npos
+            && type_pos < header_end)
+        {
+            type_pos += 13;
+
+            while (type_pos < header_end
+                && it->second.cgiOutput[type_pos] == ' ')
+                type_pos++;
+
+            type_end = it->second.cgiOutput.find(
+                "\r\n",
+                type_pos
+            );
+
+            if (type_end == std::string::npos
+                || type_end > header_end)
+                type_end = header_end;
+
+            content_type = it->second.cgiOutput.substr(
+                type_pos,
+                type_end - type_pos
+            );
+        }
+        else
+            content_type = "text/html";
+
+        it->second.cgiOutput.erase(0, header_end + 4);
+    }
+    else
+        content_type = "text/html";
+
+    response_header = "HTTP/1.1 200 OK\r\n";
+    response_header += "Content-Type: ";
+    response_header += content_type;
+    response_header += "\r\nContent-Length: ";
+    {
+        std::ostringstream size_stream;
+
+        size_stream << it->second.cgiOutput.size();
+        response_header += size_stream.str();
+    }
+    response_header += "\r\nConnection: close\r\n\r\n";
+
+    it->second.cgiOutput.insert(0, response_header);
+
+    it->second.writeBuffer.swap(it->second.cgiOutput);
+
+    it->second.cgiOutput.clear();
     it->second.state = WRITING;
 
     enableWriteEvent(client_fd);
@@ -238,6 +400,9 @@ bool handle_cgi_request(Server &server, HttpRequest &request_data,
 
     if (!get_request_body(request_data._req, body))
         body = "";
+
+    std::cout << "DEBUG CGI input body size: "
+          << body.size() << std::endl;
 
     if (script_path == "/cgi-bin" || script_path == "/cgi-bin/")
     {
@@ -360,9 +525,38 @@ bool handle_cgi_request(Server &server, HttpRequest &request_data,
         fs_script += relative_path;
     }
 
-    struct stat st;
+    std::cout << "========== DEBUG CGI PATH =========="
+          << std::endl;
+    std::cout << "Request path: "
+            << request_data._path << std::endl;
+    std::cout << "Script path: "
+            << script_path << std::endl;
+    std::cout << "Location path: "
+            << location_path << std::endl;
+    std::cout << "Relative path: "
+            << relative_path << std::endl;
+    std::cout << "Root: "
+            << root << std::endl;
+    std::cout << "FS script: "
+            << fs_script << std::endl;
+    std::cout << "===================================="
+            << std::endl;
 
-    if (stat(fs_script.c_str(), &st) != 0)
+    struct stat st;
+    int stat_result;
+
+    stat_result = stat(fs_script.c_str(), &st);
+
+    std::cout << "========== DEBUG STAT =========="
+            << std::endl;
+    std::cout << "Path: " << fs_script << std::endl;
+    std::cout << "stat result: " << stat_result << std::endl;
+    std::cout << "================================"
+            << std::endl;
+
+    if (stat_result != 0
+        && choose_interpreter(script_path).empty()
+        && location.get_cgi_extensions().empty())
     {
         server.send_error_page(request_data._client_fd, 404,
             "Not Found", "CGI script not found.",
@@ -446,6 +640,8 @@ bool handle_cgi_request(Server &server, HttpRequest &request_data,
         add_env(env, "SERVER_PROTOCOL", request_data._version);
         add_env(env, "PATH_INFO", request_data._path);
 
+        add_request_headers(env, request_data._req);
+
         std::vector<char *> envp;
 
         for (size_t i = 0; i < env.size(); i++)
@@ -462,6 +658,7 @@ bool handle_cgi_request(Server &server, HttpRequest &request_data,
         execve(executable.c_str(), argv, &envp[0]);
         _exit(1);
     }
+
 
     close(in_pipe[0]);
     close(out_pipe[1]);
