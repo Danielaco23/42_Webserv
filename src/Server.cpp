@@ -1003,6 +1003,103 @@ void Server::enableWriteEvent(int fd)
 // write client
 // ============================
 
+void Server::handleCgiClientWrite(int fd)
+{
+    std::map<int, Client>::iterator it;
+    Client *client;
+    ssize_t sent;
+    size_t remaining;
+
+    it = _clients.find(fd);
+    if (it == _clients.end())
+        return;
+
+    client = &it->second;
+
+    if (client->cgiResponseHeaderPos
+        < client->cgiResponseHeader.size())
+    {
+        remaining = client->cgiResponseHeader.size()
+            - client->cgiResponseHeaderPos;
+
+        sent = send(
+            fd,
+            client->cgiResponseHeader.c_str()
+                + client->cgiResponseHeaderPos,
+            remaining,
+            0
+        );
+
+        if (sent < 0)
+        {
+            _pending_remove.push_back(fd);
+            return;
+        }
+
+        if (sent == 0)
+        {
+            _pending_remove.push_back(fd);
+            return;
+        }
+
+        client->cgiResponseHeaderPos += static_cast<size_t>(sent);
+        client->last_activity = std::time(NULL);
+
+        if (client->cgiResponseHeaderPos
+            < client->cgiResponseHeader.size())
+            return;
+    }
+
+    if (client->cgiOutputPos >= client->cgiOutput.size())
+    {
+        client->cgiOutput.clear();
+        client->cgiResponseHeader.clear();
+        client->cgiOutputPos = 0;
+        client->cgiResponseHeaderPos = 0;
+        client->cgiBodyStart = 0;
+        client->cgiWriting = false;
+        _pending_remove.push_back(fd);
+        return;
+    }
+
+    remaining = client->cgiOutput.size()
+        - client->cgiOutputPos;
+
+    sent = send(
+        fd,
+        client->cgiOutput.c_str() + client->cgiOutputPos,
+        remaining,
+        0
+    );
+
+    if (sent < 0)
+    {
+        _pending_remove.push_back(fd);
+        return;
+    }
+
+    if (sent == 0)
+    {
+        _pending_remove.push_back(fd);
+        return;
+    }
+
+    client->cgiOutputPos += static_cast<size_t>(sent);
+    client->last_activity = std::time(NULL);
+
+    if (client->cgiOutputPos >= client->cgiOutput.size())
+    {
+        client->cgiOutput.clear();
+        client->cgiResponseHeader.clear();
+        client->cgiOutputPos = 0;
+        client->cgiResponseHeaderPos = 0;
+        client->cgiBodyStart = 0;
+        client->cgiWriting = false;
+        _pending_remove.push_back(fd);
+    }
+}
+
+
 void Server::handleClientWrite(int fd)
 {
     std::map<int, Client>::iterator it;
@@ -1012,6 +1109,12 @@ void Server::handleClientWrite(int fd)
         return;
 
     Client &c = it->second;
+
+    if (c.cgiWriting)
+    {
+        handleCgiClientWrite(fd);
+        return;
+    }
 
     if (c.writeBuffer.empty())
     {
@@ -1030,6 +1133,7 @@ void Server::handleClientWrite(int fd)
                 << c.writeBuffer.substr(0, first_line_end)
                 << std::endl;
     }
+
     sent = send(fd, c.writeBuffer.c_str(), c.writeBuffer.size(), 0);
 
     if (sent < 0)
@@ -1214,6 +1318,8 @@ void Server::handleCgiWrite(int fd)
     std::map<int, int>::iterator pipe_it;
     std::map<int, Client>::iterator client_it;
     Client *client;
+    size_t body_end;
+    size_t remaining;
     ssize_t sent;
 
     pipe_it = _cgi_input_pipes.find(fd);
@@ -1228,19 +1334,23 @@ void Server::handleCgiWrite(int fd)
     }
 
     client = &client_it->second;
+    body_end = client->request._req.size();
 
-    if (client->cgiInputPos >= client->cgiInput.size())
+    if (client->cgiInputPos >= body_end)
     {
-        std::string().swap(client->cgiInput);
+        client->request._req.clear();
         client->cgiInputPos = 0;
+        client->cgiBodyStart = 0;
         _pending_remove.push_back(fd);
         return;
     }
 
+    remaining = body_end - client->cgiInputPos;
+
     sent = write(
         fd,
-        client->cgiInput.c_str() + client->cgiInputPos,
-        client->cgiInput.size() - client->cgiInputPos
+        client->request._req.c_str() + client->cgiInputPos,
+        remaining
     );
 
     if (sent > 0)
@@ -1248,10 +1358,11 @@ void Server::handleCgiWrite(int fd)
         client->cgiInputPos += static_cast<size_t>(sent);
         client->last_activity = std::time(NULL);
 
-        if (client->cgiInputPos >= client->cgiInput.size())
+        if (client->cgiInputPos >= body_end)
         {
-            std::string().swap(client->cgiInput);
+            client->request._req.clear();
             client->cgiInputPos = 0;
+            client->cgiBodyStart = 0;
             _pending_remove.push_back(fd);
         }
     }

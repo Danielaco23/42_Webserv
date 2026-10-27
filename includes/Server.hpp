@@ -58,6 +58,7 @@ private:
     // core handlers
     void acceptClient(int listening_fd);
     void handleClientRead(int fd);
+    void handleCgiClientWrite(int fd);
     void handleClientWrite(int fd);
     void removeClient(int fd);
     

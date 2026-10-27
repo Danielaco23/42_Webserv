@@ -43,8 +43,12 @@ public:
     HttpRequest request;
 
     std::string cgiOutput;
-    std::string cgiInput;
+    std::string cgiResponseHeader;
     size_t cgiInputPos;
+    size_t cgiBodyStart;
+    size_t cgiOutputPos;
+    size_t cgiResponseHeaderPos;
+    bool cgiWriting;
 
     time_t last_activity; 
 

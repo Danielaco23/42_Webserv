@@ -10,16 +10,15 @@
 #include <fcntl.h>
 #include <cctype>
 
-
-static bool get_request_body(const std::string &request,
-                             std::string &body)
+static bool get_request_body_start(const std::string &request,
+                                   size_t &body_start)
 {
-    size_t pos = request.find("\r\n\r\n");
+    body_start = request.find("\r\n\r\n");
 
-    if (pos == std::string::npos)
+    if (body_start == std::string::npos)
         return false;
 
-    body = request.substr(pos + 4);
+    body_start += 4;
     return true;
 }
 
@@ -289,6 +288,7 @@ void Server::finishCgi(int pipe_fd)
     size_t header_end;
     size_t type_pos;
     size_t type_end;
+    size_t body_size;
     std::string content_type;
     std::string response_header;
 
@@ -359,28 +359,35 @@ void Server::finishCgi(int pipe_fd)
         else
             content_type = "text/html";
 
-        it->second.cgiOutput.erase(0, header_end + 4);
+        it->second.cgiBodyStart = header_end + 4;
     }
     else
+    {
         content_type = "text/html";
+        it->second.cgiBodyStart = 0;
+    }
+
+    body_size = it->second.cgiOutput.size()
+        - it->second.cgiBodyStart;
 
     response_header = "HTTP/1.1 200 OK\r\n";
     response_header += "Content-Type: ";
     response_header += content_type;
     response_header += "\r\nContent-Length: ";
+
     {
         std::ostringstream size_stream;
 
-        size_stream << it->second.cgiOutput.size();
+        size_stream << body_size;
         response_header += size_stream.str();
     }
+
     response_header += "\r\nConnection: close\r\n\r\n";
 
-    it->second.cgiOutput.insert(0, response_header);
-
-    it->second.writeBuffer.swap(it->second.cgiOutput);
-
-    it->second.cgiOutput.clear();
+    it->second.cgiResponseHeader = response_header;
+    it->second.cgiResponseHeaderPos = 0;
+    it->second.cgiOutputPos = it->second.cgiBodyStart;
+    it->second.cgiWriting = true;
     it->second.state = WRITING;
 
     enableWriteEvent(client_fd);
@@ -396,13 +403,15 @@ bool handle_cgi_request(Server &server, HttpRequest &request_data,
     if (!parse_cgi_target(request_data._req, script_path, query_string))
         return false;
 
-    std::string body;
+    
+    size_t body_start;
 
-    if (!get_request_body(request_data._req, body))
-        body = "";
+    if (!get_request_body_start(request_data._req, body_start))
+        return false;
 
-    std::cout << "DEBUG CGI input body size: "
-          << body.size() << std::endl;
+    std::cout << "CGI BODY SIZE: "
+            << request_data._req.size() - body_start << std::endl;
+
 
     if (script_path == "/cgi-bin" || script_path == "/cgi-bin/")
     {
@@ -669,8 +678,8 @@ bool handle_cgi_request(Server &server, HttpRequest &request_data,
 
     if (it != server.getClients().end())
     {
-        it->second.cgiInput = body;
-        it->second.cgiInputPos = 0;
+        it->second.cgiBodyStart = body_start;
+        it->second.cgiInputPos = body_start;
     }
 
     server.addCgiPipe(out_pipe[0], request_data._client_fd);
