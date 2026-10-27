@@ -135,39 +135,45 @@ static std::string choose_interpreter(const std::string &script_path)
 
 void Server::handleCgiRead(int fd)
 {
-    char buffer[4096];
-    ssize_t n = read(fd, buffer, sizeof(buffer));
+    char buffer[16384];
+    int client_fd;
+    std::map<int, Client>::iterator it;
+    ssize_t n;
+    bool received;
 
-    int client_fd = getCgiClient(fd);
-
+    client_fd = getCgiClient(fd);
     if (client_fd < 0)
     {
         _pending_remove.push_back(fd);
         return;
     }
 
-    std::map<int, Client>::iterator it = _clients.find(client_fd);
-
+    it = _clients.find(client_fd);
     if (it == _clients.end())
     {
         _pending_remove.push_back(fd);
         return;
     }
 
-    if (n > 0)
+    received = false;
+    while (true)
     {
-        it->second.cgiOutput.append(buffer, n);
+        n = read(fd, buffer, sizeof(buffer));
+        if (n > 0)
+        {
+            it->second.cgiOutput.append(buffer, n);
+            received = true;
+            continue;
+        }
+        if (n == 0)
+        {
+            finishCgi(fd);
+            return;
+        }
+        break;
+    }
+    if (received)
         it->second.last_activity = std::time(NULL);
-        return;
-    }
-
-    if (n == 0)
-    {
-       finishCgi(fd);
-        return;
-    }
-
-    _pending_remove.push_back(fd);
 }
 
 static void add_env(std::vector<std::string> &env,
@@ -680,6 +686,7 @@ bool handle_cgi_request(Server &server, HttpRequest &request_data,
     {
         it->second.cgiBodyStart = body_start;
         it->second.cgiInputPos = body_start;
+        it->second.cgiOutput.reserve(65536);
     }
 
     server.addCgiPipe(out_pipe[0], request_data._client_fd);

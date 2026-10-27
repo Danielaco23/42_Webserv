@@ -288,10 +288,14 @@ void Server::processPollEvents()
 
 void Server::applyPendingChanges()
 {
+    size_t i;
+    size_t read_index;
+    size_t write_index;
+
     // =========================
     // ADD NEW CLIENTS
     // =========================
-    for (size_t i = 0; i < _pending_add.size(); i++)
+    for (i = 0; i < _pending_add.size(); i++)
         _fds.push_back(_pending_add[i]);
 
     _pending_add.clear();
@@ -299,7 +303,7 @@ void Server::applyPendingChanges()
     // =========================
     // REMOVE CLIENTS
     // =========================
-    for (size_t i = 0; i < _pending_remove.size(); i++)
+    for (i = 0; i < _pending_remove.size(); i++)
     {
         int fd = _pending_remove[i];
 
@@ -312,6 +316,22 @@ void Server::applyPendingChanges()
     }
 
     _pending_remove.clear();
+
+    // =========================
+    // COMPACT FDS
+    // =========================
+    write_index = 0;
+
+    for (read_index = 0; read_index < _fds.size(); read_index++)
+    {
+        if (_fds[read_index].fd != -1)
+        {
+            _fds[write_index] = _fds[read_index];
+            write_index++;
+        }
+    }
+
+    _fds.resize(write_index);
 }
 
 // ============================
@@ -1159,17 +1179,22 @@ void Server::handleClientWrite(int fd)
 
 void Server::removeClient(int fd)
 {
-    std::map<int, Client>::iterator it = _clients.find(fd);
+    std::map<int, Client>::iterator it;
+    size_t i;
+
+    it = _clients.find(fd);
     if (it != _clients.end())
         _clients.erase(it);
 
     close(fd);
 
-    for (size_t i = 0; i < _fds.size(); i++)
+    for (i = 0; i < _fds.size(); i++)
     {
         if (_fds[i].fd == fd)
         {
-            _fds.erase(_fds.begin() + i);
+            _fds[i].fd = -1;
+            _fds[i].events = 0;
+            _fds[i].revents = 0;
             break;
         }
     }
@@ -1278,15 +1303,19 @@ int Server::getCgiClient(int fd)
 
 void Server::removeCgiPipe(int fd)
 {
+    size_t i;
+
     _cgi_pipes.erase(fd);
     _cgi_pids.erase(fd);
     close(fd);
 
-    for (size_t i = 0; i < _fds.size(); i++)
+    for (i = 0; i < _fds.size(); i++)
     {
         if (_fds[i].fd == fd)
         {
-            _fds.erase(_fds.begin() + i);
+            _fds[i].fd = -1;
+            _fds[i].events = 0;
+            _fds[i].revents = 0;
             break;
         }
     }
@@ -1294,14 +1323,18 @@ void Server::removeCgiPipe(int fd)
 
 void Server::removeCgiInputPipe(int fd)
 {
+    size_t i;
+
     _cgi_input_pipes.erase(fd);
     close(fd);
 
-    for (size_t i = 0; i < _fds.size(); i++)
+    for (i = 0; i < _fds.size(); i++)
     {
         if (_fds[i].fd == fd)
         {
-            _fds.erase(_fds.begin() + i);
+            _fds[i].fd = -1;
+            _fds[i].events = 0;
+            _fds[i].revents = 0;
             break;
         }
     }
