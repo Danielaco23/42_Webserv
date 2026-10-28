@@ -1,4 +1,4 @@
-*This project has been created as part of the 42 curriculum by dgomez-l, pmendez- and owmarqui.*
+*This project has been created as part of the 42 curriculum by dgomez-l and owmarqui.*
 
 # Descripcion
 
@@ -580,7 +580,8 @@ After stopping the server, verify that the port can be reused by starting it aga
 
 - https://www.w3schools.com/cpp/cpp_templates.asp
 
-- So far, as far as dgomez-l's apportations, AI was **not** used in the development of this project.
+- As far as dgomez-l's apportations, AI was **not** used in the development of this project.
+- As far as owmarqui's apportations, AI was used mostly as a debugging and understanding tool for finding errors and mistakes.
 
 - what is RFC ? : https://www.rfc-editor.org/rfc/rfc9110.htm
 - What is CGI ? : https://www.rfc-editor.org/rfc/rfc3875.html
@@ -592,5 +593,5 @@ After stopping the server, verify that the port can be reused by starting it aga
 # Documentation
 
 - Practical guide for HTTP + CGI + uploads:
-	- [docs/GUIA_HTTP_CGI_UPLOADS_PMENDEZ.md](docs/GUIA_HTTP_CGI_UPLOADS_PMENDEZ.md)
-	- [docs/GUIA_CGI_RUTAS_PMENDEZ.md](docs/GUIA_CGI_RUTAS_PMENDEZ.md)
+	- [docs/GUIA_HTTP_CGI_UPLOADS.md](docs/GUIA_HTTP_CGI_UPLOADS.md)
+	- [docs/GUIA_CGI_RUTAS.md](docs/GUIA_CGI_RUTAS.md)

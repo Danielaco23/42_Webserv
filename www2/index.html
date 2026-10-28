@@ -9,7 +9,7 @@
 <title>📤 File Uploader</title>
 <style>
   :root{
-    --bg:#201f1f; --card:#ffffff; --accent:#2b7cff; --accent-2:#5a8cff; --muted:#6b7280;
+    --bg:#f6f7fb; --card:#ffffff; --accent:#2b7cff; --accent-2:#5a8cff; --muted:#6b7280;
   }
   *{box-sizing:border-box}
   body{
@@ -139,7 +139,7 @@
 
 
           <div id="messages" style="margin-top:12px"></div>
-          <div class="hint">Tip: You can drag multiple files at once. Large files will be rejected if they exceed the server limit, and any file type is allowed.</div>
+          <div class="hint">Tip: You can drag multiple files at once. Large files will be rejected if they exceed 50MB, and any file type is allowed.</div>
         </div>
 
         <aside class="card meta" aria-labelledby="uploadListTitle">
@@ -158,7 +158,7 @@
 
   <div class="footer">
     <div>© 2026 Uploader — built for <strong>42_Webserv</strong></div>
-    <div>Built by <a href="https://github.com/Danielaco23" target="_blank" rel="noopener noreferrer">dgomez-l</a>, <a href="https://github.com/pauss12" target="_blank" rel="noopener noreferrer">pmendez-</a> and <a href="https://github.com/omarquinaluj" target="_blank" rel="noopener noreferrer">owmarqui</a></div>
+    <div>Built by <a href="https://github.com/Danielaco23" target="_blank" rel="noopener noreferrer">dgomez-l</a> and <a href="https://github.com/omarquinaluj" target="_blank" rel="noopener noreferrer">owmarqui</a></div>
     <div style="margin-top:8px">
       <a href="#" style="color:var(--accent);text-decoration:none;margin-right:10px">About</a>
       <a href="#" style="color:var(--accent);text-decoration:none;margin-right:10px">Docs</a>
@@ -302,7 +302,7 @@
       const formData = new FormData();
       // server may expect the field name 'files' or 'file' — adjust if needed
       formData.append('files', file, file.name);
-
+      console.log(file);
       if (file._ui && file._ui.bar)
         file._ui.bar.style.width = '0%';
 
