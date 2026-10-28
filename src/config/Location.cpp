@@ -141,7 +141,7 @@ Location::Location(std::string path, std::string &cntnts)
 	this->_alias = "";
 	this->_client_max_body_size = DFLT_CMBS;
 
-	std::cout << "CONTENT [" << cntnts << "]\n";
+	// std::cout << "CONTENT [" << cntnts << "]\n";
 	while (!cntnts.empty())
 	{
 		size_t	index = 0;
@@ -166,11 +166,11 @@ Location::Location(std::string path, std::string &cntnts)
 
 			this->_root = cntnts.substr(index, cntnts.find(';') - index);
 			flags[0] = true;
-			std::cout << "\tLocation ROOT [" << this->_root << "]\n";
+			// std::cout << "\tLocation ROOT [" << this->_root << "]\n";
 		}
 		else if ((index + 13 < cntnts.size() && !strncmp(&cntnts[index], "allow_methods", 13) && isspace(cntnts[index + 13])) || (index + 8 < cntnts.size() && !strncmp(&cntnts[index], "methods", 8) && isspace(cntnts[index + 8])))
 		{
-			std::cout << "\tFound \"allow_methods\"" << std::endl;
+			// std::cout << "\tFound \"allow_methods\"" << std::endl;
 			if (flags[1])
 				throw (Config::ConfigBadConstrException("Duplicate allow_methods"));
 
@@ -207,7 +207,7 @@ Location::Location(std::string path, std::string &cntnts)
 				while (isspace(extract[0]))
 					extract.erase(0, 1);
 			}
-			std::cout << "\tLocation METHODS FINISHED\n";
+			// std::cout << "\tLocation METHODS FINISHED\n";
 			flags[1] = true;
 		}
 		else if (index + 9 < cntnts.size() && !strncmp(&cntnts[index], "autoindex", 9) && isspace(cntnts[index + 9]))
@@ -222,12 +222,12 @@ Location::Location(std::string path, std::string &cntnts)
 			if (strcmp(extract.c_str(), "on") == 0)
 			{
 				this->_autoindex = true;
-				std::cout << "\tLocation AUTOINDEX [TRUE]\n";
+				// std::cout << "\tLocation AUTOINDEX [TRUE]\n";
 			}
 			else if (strcmp(extract.c_str(), "off") == 0)
 			{
 				this->_autoindex = false;
-				std::cout <<"\tLocation AUTOINDEX [FALSE]\n";
+				// std::cout <<"\tLocation AUTOINDEX [FALSE]\n";
 			}
 			else
 				throw (Config::ConfigBadConstrException("Invalid autoindex"));
@@ -243,7 +243,7 @@ Location::Location(std::string path, std::string &cntnts)
 				index ++;
 
 			this->_index = cntnts.substr(index, cntnts.find(';') - index);
-			std::cout << "\tLocation INDEX [" << this->_index << "]\n";
+			// std::cout << "\tLocation INDEX [" << this->_index << "]\n";
 			flags[3] = true;
 		}
 		else if (index + 6 < cntnts.size() && !strncmp(&cntnts[index], "return", 6) && isspace(cntnts[index + 6]))
@@ -255,7 +255,7 @@ Location::Location(std::string path, std::string &cntnts)
 				index ++;
 
 			this->_return = cntnts.substr(index, cntnts.find(';') - index);
-			std::cout << "\tLocation RETURN [" << this->_return << "]\n";
+			// std::cout << "\tLocation RETURN [" << this->_return << "]\n";
 			flags[4] = true;
 		}
 		else if (index + 5 < cntnts.size() && !strncmp(&cntnts[index], "alias", 5) && isspace(cntnts[index + 5]))
@@ -267,7 +267,7 @@ Location::Location(std::string path, std::string &cntnts)
 				index ++;
 
 			this->_alias = cntnts.substr(index, cntnts.find(';') - index);
-			std::cout << "\tLocation ALIAS [" << this->_alias << "]\n";
+			// std::cout << "\tLocation ALIAS [" << this->_alias << "]\n";
 			flags[5] = true;
 		}
 		else if (index + 13 < cntnts.size()
@@ -310,20 +310,6 @@ Location::Location(std::string path, std::string &cntnts)
 						extract.erase(0, len + 1);
 				}
 
-				for (size_t i = 0; i < this->_cgi_extensions.size(); i++)
-				{
-						if (i == 0)
-								std::cout << "\tLocation CGI_EXTENSIONS [";
-
-						if (i != 0)
-								std::cout << " | ";
-
-						std::cout << this->_cgi_extensions[i];
-
-						if (i == this->_cgi_extensions.size() - 1)
-								std::cout << "]\n";
-				}
-
 				flags[6] = true;
 		}
 		else if (index + 8 < cntnts.size() && !strncmp(&cntnts[index], "cgi_path", 8) && isspace(cntnts[index + 8]))
@@ -351,17 +337,6 @@ Location::Location(std::string path, std::string &cntnts)
 				this->_cgi_paths.push_back(extract.substr(0, len));
 				extract.erase(0, len + 1);
 			}
-
-			for (size_t i = 0; i < this->_cgi_paths.size(); i++)
-			{
-				if (i == 0)
-					std::cout << "\tLocation CGI_PATHS [";
-				if (i != 0)
-					std::cout << " | ";
-				std::cout << this->_cgi_paths[i];
-				if (i == this->_cgi_paths.size() - 1)
-					std::cout << "]\n";
-			}
 			flags[7] = true;
 		}
 		else if (index + 20 < cntnts.size() && !strncmp(&cntnts[index], "client_max_body_size", 20) && isspace(cntnts[index + 20]))
@@ -375,7 +350,7 @@ Location::Location(std::string path, std::string &cntnts)
 			{this->_client_max_body_size = ft_stoi(cntnts.substr(index, cntnts.find(';') - index));}
 			catch(const std::exception& e)
 			{throw (Config::ConfigBadConstrException("Invalid client max body size"));}
-			std::cout << "\tLocation CLIENT_MAX_BODY_SIZE [" << this->_client_max_body_size << "]\n";
+			// std::cout << "\tLocation CLIENT_MAX_BODY_SIZE [" << this->_client_max_body_size << "]\n";
 			flags[8] = true;
 		}
 		else
